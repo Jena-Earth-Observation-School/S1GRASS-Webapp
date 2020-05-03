@@ -71,7 +71,7 @@ def get_footprint(ras_name, out_path=None):
     #          "4326)!")
 
     if out_path is None:
-        out_path = data_path + '\\out\\'
+        out_path = grass_path + '\\grass_output\\'
         if not os.path.exists(out_path):
             os.makedirs(out_path)
 
@@ -81,7 +81,7 @@ def get_footprint(ras_name, out_path=None):
     grass.run_command('g.region', raster=ras_name)
 
     # Create temporary raster file with all values set to 1
-    grass.mapcalc("ras_tmp = (abs($a) >= 1) * 1", a=ras_name, overwrite=True)
+    grass.mapcalc("ras_tmp = (abs($a) > 0) * 1", a=ras_name, overwrite=True)
 
     # Create temporary vector file from "ras_tmp"
     grass.run_command("r.to.vect", input="ras_tmp", output="vec_tmp",

@@ -1,8 +1,10 @@
 from osgeo import gdal, osr
 from osgeo.gdalconst import GA_ReadOnly
-import os, re
+import os
+import re
 import sqlite3
 from sqlite3 import Error
+gdal.UseExceptions()
 
 def create_db(dir_path):
     """Creates an empty SQLite database in a subdirectory of the provided path.
@@ -87,44 +89,56 @@ def fill_db(dir_path):
 
 
 def data_dict(dir_path):
-    """Creates a dictionary with information about each valid .tif file in
-    the data directory. The extracted information is then used to fill the
-    SQLite database.
+    """Creates a dictionary with information about each valid Sentinel-1 .tif
+    file in the data directory. The extracted information is then used to
+    fill the SQLite database.
     :param dir_path: Path to data directory.
-    :return: Dictionary
+    :return data_dict: Dictionary
     """
     scenes = [dir_path + "\\" + f for f in os.listdir(dir_path) if
-                 re.search(r'^S1['r'AB'r'].*\.tif', f)]
+              re.search(r'^S1['r'AB'r'].*\.tif', f)]
+
+    if len(scenes) == 0:
+        raise ImportError("No valid Sentinel-1 GeoTiffs were found in the "
+                          "directory: ", dir_path)
 
     data_dict = {}
     for scene in scenes:
         data = gdal.Open(scene, GA_ReadOnly)
-
-        proj = osr.SpatialReference(wkt=data.GetProjection())
         band = data.GetRasterBand(1)
-        band_min, band_max = band.ComputeRasterMinMax(True)
 
-        bounds = _get_bounds_res(data)
-        file_info = _get_filename_info(scene)
+        try:
+            band_min, band_max = band.ComputeRasterMinMax(True)
 
-        data_dict[scene] = {"sensor": file_info[0],
-                            "orbit": file_info[2],
-                            "date": file_info[4],
-                            "acquisition_mode": file_info[1],
-                            "polarisation": file_info[3],
-                            "shape": (data.RasterXSize, data.RasterYSize,
-                                      data.RasterCount),
-                            "proj_epsg": proj.GetAttrValue('AUTHORITY', 1),
-                            "bounds_south": bounds[0],
-                            "bounds_north": bounds[2],
-                            "bounds_west": bounds[3],
-                            "bounds_east": bounds[1],
-                            "xy_resolution": (bounds[4], bounds[5]),
-                            "nodata_val": band.GetNoDataValue(),
-                            "band_dtype": gdal.GetDataTypeName(band.DataType),
-                            "band_min": band_min,
-                            "band_max": band_max,
-                            "footprint": "insert_footprint_here"}
+            proj = osr.SpatialReference(wkt=data.GetProjection())
+            bounds = _get_bounds_res(data)
+            file_info = _get_filename_info(scene)
+
+            data_dict[scene] = {"sensor": file_info[0],
+                                "orbit": file_info[2],
+                                "date": file_info[4],
+                                "acquisition_mode": file_info[1],
+                                "polarisation": file_info[3],
+                                "shape": (data.RasterXSize, data.RasterYSize,
+                                          data.RasterCount),
+                                "proj_epsg": proj.GetAttrValue('AUTHORITY', 1),
+                                "bounds_south": bounds[0],
+                                "bounds_north": bounds[2],
+                                "bounds_west": bounds[3],
+                                "bounds_east": bounds[1],
+                                "xy_resolution": (bounds[4], bounds[5]),
+                                "nodata_val": band.GetNoDataValue(),
+                                "band_dtype": gdal.GetDataTypeName(band.DataType),
+                                "band_min": band_min,
+                                "band_max": band_max,
+                                "footprint": "insert_footprint_here"}
+        except RuntimeError:
+            print(os.path.basename(scene))
+            print("Failed to compute min/max because no valid pixels were "
+                  "found in sampling. File will be ignored.")
+            continue
+
+    return data_dict
 
 
 def _get_bounds_res(file):
@@ -175,10 +189,13 @@ def _get_filename_info(file_path):
     return [sensor, acq_mode, orbit, pol, date]
 
 
-
 data_path = "D:\\GEO450_data"
 
+scenes = [data_path + "\\" + f for f in os.listdir(data_path) if
+          re.search(r'^S1['r'AB'r'].*\.tif', f)]
+
 create_db(data_path)
+dict1 = data_dict(data_path)
 
 ######################
 
@@ -189,10 +206,4 @@ conn = sqlite3.connect(db_path_name)
 
 conn.execute()
 
-
-#################
-scene = scenes_s1[10]
-data = gdal.Open(scene, GA_ReadOnly)
-proj = osr.SpatialReference(wkt=data.GetProjection())
-epsg = proj.GetAttrValue('AUTHORITY',1)
 

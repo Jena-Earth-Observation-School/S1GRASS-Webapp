@@ -6,6 +6,23 @@ import sqlite3
 from sqlite3 import Error
 gdal.UseExceptions()
 
+
+def create_connection(db_file):
+    """ create a database connection to the SQLite database
+        specified by db_file
+    :param db_file: database file
+    :return: Connection object or None
+    """
+    conn = None
+    try:
+        conn = sqlite3.connect(db_file)
+
+    except Error as e:
+        print(e)
+
+    return conn
+
+
 def create_db(dir_path):
     """Creates an empty SQLite database in a subdirectory of the provided path.
     :param dir_path: Path to data directory.
@@ -35,9 +52,9 @@ def create_db(dir_path):
                 "bounds_east": "REAL",
                 "footprint": "VARCHAR[max]"}
 
-    conn = None
-    try:
-        conn = sqlite3.connect(db_path_name)
+    conn = create_connection(db_path_name)
+    with conn:
+        cursor = conn.cursor()
 
         key_string = ', '.join(
             [f'{key} {key_dict[key]}' for key in key_dict.keys()])
@@ -47,45 +64,42 @@ def create_db(dir_path):
             [f'{key} {geo_dict[key]}' for key in geo_dict.keys()])
 
         # Dataset table
-        conn.execute(
+        cursor.execute(
             f'CREATE TABLE datasets ({key_string}, filepath VARCHAR[max], '
             f'PRIMARY KEY({", ".join(key_dict.keys())}))')
 
         # Key table
         key_rows = [(key, ) for key in key_dict.keys()]
-        conn.execute(f'CREATE TABLE keys (key VARCHAR[255])')
-        conn.executemany('INSERT INTO keys VALUES (?)', key_rows)
+        cursor.execute(f'CREATE TABLE keys (key VARCHAR[255])')
+        cursor.executemany('INSERT INTO keys VALUES (?)', key_rows)
         conn.commit()
 
         # Metadata table
-        conn.execute(f'CREATE TABLE metadata ({key_string}, {meta_string}, '
+        cursor.execute(f'CREATE TABLE metadata ({key_string}, {meta_string}, '
                      f'PRIMARY KEY ({", ".join(key_dict.keys())}))')
 
         # Geometry table
-        conn.execute(f'CREATE TABLE geometry ({key_string}, {geo_string}, '
+        cursor.execute(f'CREATE TABLE geometry ({key_string}, {geo_string}, '
                      f'PRIMARY KEY ({", ".join(key_dict.keys())}))')
 
-    except Error as e:
-        print(e)
 
-
-def fill_db(dir_path):
+def fill_db(dir_path, db_dict):
     """
-
     :param dir_path: Path to data directory.
     :return:
     """
     db_name = "scenes.db"
     db_path_name = dir_path + "\\sqlite\\" + db_name
 
-    conn = None
-    try:
-        conn = sqlite3.connect(db_path_name)
-
-
-
-    except Error as e:
-        print(e)
+    conn = create_connection(db_path_name)
+    with conn:
+        cursor = conn.cursor()
+        for key in db_dict.keys():
+            cursor.execute("""INSERT INTO datasets(sensor, orbit, date, 
+            filepath) VALUES (?, ?, ?, ?)""", (db_dict[key]["sensor"],
+                                               db_dict[key]["orbit"],
+                                               db_dict[key]["date"],
+                                               key))
 
 
 def data_dict(dir_path):
@@ -188,22 +202,14 @@ def _get_filename_info(file_path):
 
     return [sensor, acq_mode, orbit, pol, date]
 
-
+#########################################################################
 data_path = "D:\\GEO450_data"
-
 scenes = [data_path + "\\" + f for f in os.listdir(data_path) if
           re.search(r'^S1['r'AB'r'].*\.tif', f)]
 
 create_db(data_path)
 dict1 = data_dict(data_path)
+fill_db(data_path, dict1)
 
-######################
-
-db_name = "scenes.db"
-db_path_name = data_path + "\\sqlite\\" + db_name
-
-conn = sqlite3.connect(db_path_name)
-
-conn.execute()
 
 

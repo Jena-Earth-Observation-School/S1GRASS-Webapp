@@ -6,157 +6,29 @@ import sqlite3
 from sqlite3 import Error
 gdal.UseExceptions()
 
-#def check_path(dir_path):
-    # if there's already a subdir called "sqlite" with a db-file then
-    # create_db() was already called and a database exists
-        #-> no need to call create_db()
-        # open db-file and check entries (datasets/filepath)
-            # if db-file empty or structure wrong
-                #-> overwrite using create_db() // this will not work if
-                # tables already exist ->
-            # if entries are same as the files in dir
-                #-> no need to update
-            # if files in dir exist that are not listed in db
-                #-> update db with new files
-    # If subdir doesnt exist
-        # -> create_db()
 
-
-
-def create_connection(db_file):
-    """ create a database connection to the SQLite database
-        specified by db_file.
-    :param db_file: database file
-    :return: Connection object or None
-    """
-    conn = None
-    try:
-        conn = sqlite3.connect(db_file)
-
-    except Error as e:
-        print(e)
-
-    return conn
-
-
-def create_db(dir_path, name=None):
-    """Creates an empty SQLite database in a subdirectory of the provided path.
+def db_main(dir_path):
+    """Either creates & fills a new sqlite database or updates an
+    existing database in a subdirectory of dir_path called "sqlite".
     :param dir_path: Path to data directory.
-    :param name: Name of database to be created.
-    :return: Empty SQLite database
+    :return: Newly created or updated existing database.
     """
-    if name is None:
-        db_name = "scenes.db"
-    else:
-        db_name = name
+    # Create data dictionary
+    data = data_dict(dir_path)
+
+    # Define subdirectory to store database
     db_path = dir_path + "\\sqlite"
-    db_path_name = db_path + "\\" + db_name
+
+    # If subdirectory doesn't exist yet: create & fill database. If
+    # subdirectory (and presumably a database) already exist then
+    # still fill the database, which should ignore already existing entries
+    # and add new ones.
     if not os.path.exists(db_path):
-        os.makedirs(db_path)
+        create_db(db_path)
+        fill_db(db_path, data)
 
-    key_dict = {"sensor": "VARCHAR[255]",
-                "orbit": "VARCHAR[255]",
-                "date": "DATETIME"}
-    meta_dict = {"acquisition_mode": "VARCHAR[255]",
-                 "polarisation": "VARCHAR[255]",
-                 "shape": "VARCHAR[255]",
-                 "xy_resolution": "VARCHAR[255]",
-                 "nodata_val": "VARCHAR[255]",
-                 "band_dtype": "VARCHAR[255]",
-                 "band_min": "REAL",
-                 "band_max": "REAL"}
-    geo_dict = {"proj_epsg": "VARCHAR[255]",
-                "bounds_south": "REAL",
-                "bounds_north": "REAL",
-                "bounds_west": "REAL",
-                "bounds_east": "REAL",
-                "footprint": "VARCHAR[max]"}
-
-    conn = create_connection(db_path_name)
-    with conn:
-        cursor = conn.cursor()
-
-        key_string = ', '.join(
-            [f'{key} {key_dict[key]}' for key in key_dict.keys()])
-        meta_string = ', '.join(
-            [f'{key} {meta_dict[key]}' for key in meta_dict.keys()])
-        geo_string = ', '.join(
-            [f'{key} {geo_dict[key]}' for key in geo_dict.keys()])
-
-        # Dataset table
-        cursor.execute(
-            f'CREATE TABLE datasets ({key_string}, filepath VARCHAR[max], '
-            f'PRIMARY KEY({", ".join(key_dict.keys())}))')
-
-        # Key table
-        key_rows = [(key, ) for key in key_dict.keys()]
-        cursor.execute(f'CREATE TABLE keys (key VARCHAR[255])')
-        cursor.executemany('INSERT INTO keys VALUES (?)', key_rows)
-        conn.commit()
-
-        # Metadata table
-        cursor.execute(f'CREATE TABLE metadata ({key_string}, {meta_string}, '
-                     f'PRIMARY KEY ({", ".join(key_dict.keys())}))')
-
-        # Geometry table
-        cursor.execute(f'CREATE TABLE geometry ({key_string}, {geo_string}, '
-                     f'PRIMARY KEY ({", ".join(key_dict.keys())}))')
-
-        conn.close()
-
-
-def fill_db(dir_path, db_dict):
-    """Fills the empty database that was created using create_db() with
-    information from db_dict.
-    :param dir_path: Path to data directory.
-    :param db_dict: Dictionary created by data_dict().
-    :return: Empty SQLite database
-    """
-    db_name = "scenes.db"
-    db_path_name = dir_path + "\\sqlite\\" + db_name
-
-    conn = create_connection(db_path_name)
-    with conn:
-        cursor = conn.cursor()
-        for key in db_dict.keys():
-
-            cursor.execute("""INSERT OR IGNORE INTO datasets(sensor, orbit, 
-            date, filepath) VALUES (?, ?, ?, ?)""",
-                           (db_dict[key]["sensor"],
-                            db_dict[key]["orbit"],
-                            db_dict[key]["date"],
-                            key))
-
-            cursor.execute("""INSERT OR IGNORE INTO geometry(sensor, orbit, 
-                        date, proj_epsg, bounds_south, bounds_north, 
-                        bounds_west, bounds_east) VALUES (?, ?, ?, 
-                        ?, ?, ?, ?, ?)""",
-                           (db_dict[key]["sensor"],
-                            db_dict[key]["orbit"],
-                            db_dict[key]["date"],
-                            db_dict[key]["proj_epsg"],
-                            db_dict[key]["bounds_south"],
-                            db_dict[key]["bounds_north"],
-                            db_dict[key]["bounds_west"],
-                            db_dict[key]["bounds_east"]))
-
-            cursor.execute("""INSERT OR IGNORE INTO metadata(sensor, orbit, 
-                        date, acquisition_mode, polarisation, shape, 
-                        xy_resolution, nodata_val, band_dtype, band_min, 
-                        band_max) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                           (db_dict[key]["sensor"],
-                            db_dict[key]["orbit"],
-                            db_dict[key]["date"],
-                            db_dict[key]["acquisition_mode"],
-                            db_dict[key]["polarisation"],
-                            str(db_dict[key]["shape"]),
-                            str(db_dict[key]["xy_resolution"]),
-                            db_dict[key]["nodata_val"],
-                            db_dict[key]["band_dtype"],
-                            db_dict[key]["band_min"],
-                            db_dict[key]["band_max"]))
-
-    conn.close()
+    else:
+        fill_db(db_path, data)
 
 
 def data_dict(dir_path):
@@ -212,6 +84,141 @@ def data_dict(dir_path):
     return data_dict
 
 
+def create_db(db_path, db_name=None):
+    """Creates an empty SQLite database in a subdirectory of the provided path.
+    :param db_path: Path to sqlite subdirectory.
+    :param db_name: Name of database to be created.
+    :return: Empty SQLite database.
+    """
+    if not os.path.exists(db_path):
+        os.makedirs(db_path)
+
+    if db_name is None:
+        db_name = "scenes.db"
+
+    db_path_name = db_path + "\\" + db_name
+
+    key_dict = {"sensor": "VARCHAR[255]",
+                "orbit": "VARCHAR[255]",
+                "date": "DATETIME"}
+    meta_dict = {"acquisition_mode": "VARCHAR[255]",
+                 "polarisation": "VARCHAR[255]",
+                 "shape": "VARCHAR[255]",
+                 "xy_resolution": "VARCHAR[255]",
+                 "nodata_val": "VARCHAR[255]",
+                 "band_dtype": "VARCHAR[255]",
+                 "band_min": "REAL",
+                 "band_max": "REAL"}
+    geo_dict = {"proj_epsg": "VARCHAR[255]",
+                "bounds_south": "REAL",
+                "bounds_north": "REAL",
+                "bounds_west": "REAL",
+                "bounds_east": "REAL",
+                "footprint": "VARCHAR[max]"}
+
+    conn = _create_connection(db_path_name)
+    with conn:
+        cursor = conn.cursor()
+
+        key_string = ', '.join(
+            [f'{key} {key_dict[key]}' for key in key_dict.keys()])
+        meta_string = ', '.join(
+            [f'{key} {meta_dict[key]}' for key in meta_dict.keys()])
+        geo_string = ', '.join(
+            [f'{key} {geo_dict[key]}' for key in geo_dict.keys()])
+
+        # Dataset table
+        cursor.execute(
+            f'CREATE TABLE datasets ({key_string}, filepath VARCHAR[max], '
+            f'PRIMARY KEY({", ".join(key_dict.keys())}))')
+
+        # Key table
+        key_rows = [(key, ) for key in key_dict.keys()]
+        cursor.execute(f'CREATE TABLE keys (key VARCHAR[255])')
+        cursor.executemany('INSERT INTO keys VALUES (?)', key_rows)
+        conn.commit()
+
+        # Metadata table
+        cursor.execute(f'CREATE TABLE metadata ({key_string}, {meta_string}, '
+                     f'PRIMARY KEY ({", ".join(key_dict.keys())}))')
+
+        # Geometry table
+        cursor.execute(f'CREATE TABLE geometry ({key_string}, {geo_string}, '
+                     f'PRIMARY KEY ({", ".join(key_dict.keys())}))')
+
+    conn.close()
+
+
+def fill_db(db_path, db_dict):
+    """Fills the empty database that was created using create_db() with
+    information from db_dict.
+    :param db_path: Path to sqlite subdirectory.
+    :param db_dict: Dictionary created by data_dict().
+    :return: Filled/Updated SQLite database
+    """
+
+    db_path_name = db_path + "\\scenes.db"
+
+    conn = _create_connection(db_path_name)
+    with conn:
+        cursor = conn.cursor()
+        for key in db_dict.keys():
+
+            cursor.execute("""INSERT OR IGNORE INTO datasets(sensor, orbit, 
+            date, filepath) VALUES (?, ?, ?, ?)""",
+                           (db_dict[key]["sensor"],
+                            db_dict[key]["orbit"],
+                            db_dict[key]["date"],
+                            key))
+
+            cursor.execute("""INSERT OR IGNORE INTO geometry(sensor, orbit, 
+                        date, proj_epsg, bounds_south, bounds_north, 
+                        bounds_west, bounds_east) VALUES (?, ?, ?, 
+                        ?, ?, ?, ?, ?)""",
+                           (db_dict[key]["sensor"],
+                            db_dict[key]["orbit"],
+                            db_dict[key]["date"],
+                            db_dict[key]["proj_epsg"],
+                            db_dict[key]["bounds_south"],
+                            db_dict[key]["bounds_north"],
+                            db_dict[key]["bounds_west"],
+                            db_dict[key]["bounds_east"]))
+
+            cursor.execute("""INSERT OR IGNORE INTO metadata(sensor, orbit, 
+                        date, acquisition_mode, polarisation, shape, 
+                        xy_resolution, nodata_val, band_dtype, band_min, 
+                        band_max) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                           (db_dict[key]["sensor"],
+                            db_dict[key]["orbit"],
+                            db_dict[key]["date"],
+                            db_dict[key]["acquisition_mode"],
+                            db_dict[key]["polarisation"],
+                            str(db_dict[key]["shape"]),
+                            str(db_dict[key]["xy_resolution"]),
+                            db_dict[key]["nodata_val"],
+                            db_dict[key]["band_dtype"],
+                            db_dict[key]["band_min"],
+                            db_dict[key]["band_max"]))
+
+    conn.close()
+
+
+def _create_connection(db_file):
+    """ create a database connection to the SQLite database
+        specified by db_file.
+    :param db_file: database file
+    :return: Connection object or None
+    """
+    conn = None
+    try:
+        conn = sqlite3.connect(db_file)
+
+    except Error as e:
+        print(e)
+
+    return conn
+
+
 def _get_bounds_res(dataset):
     """Gets information about extent as well as x- and y-resolution of a loaded
     raster file.
@@ -225,13 +232,13 @@ def _get_bounds_res(dataset):
     return [lrx, lry, ulx, uly, xres, yres]
 
 
-def _get_filename_info(file_path):
+def _get_filename_info(path):
     """Gets information about a raster file based on pyroSAR's file naming
     scheme: https://pyrosar.readthedocs.io/en/latest/general/filenaming.html
-    :param file_path: Path to a raster file (e.g. "D:\\data_dir\\filename.tif)."
+    :param path: Path to a raster file (e.g. "D:\\data_dir\\filename.tif)."
     :return: List containing extracted information.
     """
-    filename = os.path.basename(file_path)
+    filename = os.path.basename(path)
 
     sensor = filename[0:4].replace("_", "")
     acq_mode = filename[5:9].replace("_", "")
@@ -261,12 +268,9 @@ def _get_filename_info(file_path):
 
 #########################################################################
 data_path = "D:\\GEO450_data"
-scenes = [data_path + "\\" + f for f in os.listdir(data_path) if
-          re.search(r'^S1['r'AB'r'].*\.tif', f)]
 
-create_db(data_path)
-dict1 = data_dict(data_path)
-fill_db(data_path, dict1)
+db_main(data_path)
+
 
 
 

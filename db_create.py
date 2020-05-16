@@ -6,10 +6,26 @@ import sqlite3
 from sqlite3 import Error
 gdal.UseExceptions()
 
+def check_path(dir_path):
+    # if there's already a subdir called "sqlite" with a db-file then
+    # create_db() was already called and a database exists
+        #-> no need to call create_db()
+        # open db-file and check entries (datasets/filepath)
+            # if db-file empty or structure wrong
+                #-> overwrite using create_db() // this will not work if
+                # tables already exist ->
+            # if entries are same as the files in dir
+                #-> no need to update
+            # if files in dir exist that are not listed in db
+                #-> update db with new files
+    # If subdir doesnt exist
+        # -> create_db()
+
+
 
 def create_connection(db_file):
     """ create a database connection to the SQLite database
-        specified by db_file
+        specified by db_file.
     :param db_file: database file
     :return: Connection object or None
     """
@@ -23,12 +39,16 @@ def create_connection(db_file):
     return conn
 
 
-def create_db(dir_path):
+def create_db(dir_path, name=None):
     """Creates an empty SQLite database in a subdirectory of the provided path.
     :param dir_path: Path to data directory.
-    :return: SQLite database
+    :param name: Name of database to be created.
+    :return: Empty SQLite database
     """
-    db_name = "scenes.db"
+    if name is None:
+        db_name = "scenes.db"
+    else:
+        db_name = name
     db_path = dir_path + "\\sqlite"
     db_path_name = db_path + "\\" + db_name
     if not os.path.exists(db_path):
@@ -82,11 +102,15 @@ def create_db(dir_path):
         cursor.execute(f'CREATE TABLE geometry ({key_string}, {geo_string}, '
                      f'PRIMARY KEY ({", ".join(key_dict.keys())}))')
 
+        conn.close()
+
 
 def fill_db(dir_path, db_dict):
-    """
+    """Fills the empty database that was created using create_db() with
+    information from db_dict.
     :param dir_path: Path to data directory.
-    :return:
+    :param db_dict: Dictionary created by data_dict().
+    :return: Empty SQLite database
     """
     db_name = "scenes.db"
     db_path_name = dir_path + "\\sqlite\\" + db_name
@@ -102,15 +126,18 @@ def fill_db(dir_path, db_dict):
                                                key))
 
 
+        conn.close()
+
+
 def data_dict(dir_path):
-    """Creates a dictionary with information about each valid Sentinel-1 .tif
-    file in the data directory. The extracted information is then used to
-    fill the SQLite database.
+    """Creates a dictionary with information about each valid Sentinel-1
+    .tif (!) file in the data directory. The extracted information is then
+    used to fill the SQLite database.
     :param dir_path: Path to data directory.
     :return data_dict: Dictionary
     """
     scenes = [dir_path + "\\" + f for f in os.listdir(dir_path) if
-              re.search(r'^S1['r'AB'r'].*\.tif', f)]
+              re.search(r'^S1[AB].*\.tif', f)]
 
     if len(scenes) == 0:
         raise ImportError("No valid Sentinel-1 GeoTiffs were found in the "
@@ -155,15 +182,15 @@ def data_dict(dir_path):
     return data_dict
 
 
-def _get_bounds_res(file):
-    """Gets information about extent/bounds, as well as x- and y-resolution
-    of a raster file.
+def _get_bounds_res(dataset):
+    """Gets information about extent as well as x- and y-resolution of a loaded
+    raster file.
     :param file: osgeo.gdal.Dataset
     :return: List containing extracted information.
     """
-    ulx, xres, xskew, uly, yskew, yres = file.GetGeoTransform()
-    lrx = ulx + (file.RasterXSize * xres)
-    lry = uly + (file.RasterYSize * yres)
+    ulx, xres, xskew, uly, yskew, yres = dataset.GetGeoTransform()
+    lrx = ulx + (dataset.RasterXSize * xres)
+    lry = uly + (dataset.RasterYSize * yres)
 
     return [lrx, lry, ulx, uly, xres, yres]
 
@@ -171,7 +198,7 @@ def _get_bounds_res(file):
 def _get_filename_info(file_path):
     """Gets information about a raster file based on pyroSAR's file naming
     scheme: https://pyrosar.readthedocs.io/en/latest/general/filenaming.html
-    :param path: Path to a raster file (e.g. "D:\\data_dir\\filename.tif)."
+    :param file_path: Path to a raster file (e.g. "D:\\data_dir\\filename.tif)."
     :return: List containing extracted information.
     """
     filename = os.path.basename(file_path)
@@ -189,18 +216,18 @@ def _get_filename_info(file_path):
                          "descending). \n Please check if your files are "
                          "named according to the naming scheme of PyroSAR: \n"
                          "https://pyrosar.readthedocs.io/en/latest/general/filenaming.html")
-
-    if "VV" in filename:
+    if "_VV_" in filename:
         pol = "VV"
-    elif "VH" in filename:
+    elif "_VH_" in filename:
         pol = "VH"
     else:
-        pol = "-"
+        pol = None
         print("Could not find polarisation type for: ", filename)
 
     date = filename[12:27].replace("_", "")
 
     return [sensor, acq_mode, orbit, pol, date]
+
 
 #########################################################################
 data_path = "D:\\GEO450_data"

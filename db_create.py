@@ -6,7 +6,7 @@ import sqlite3
 from sqlite3 import Error
 gdal.UseExceptions()
 
-def check_path(dir_path):
+#def check_path(dir_path):
     # if there's already a subdir called "sqlite" with a db-file then
     # create_db() was already called and a database exists
         #-> no need to call create_db()
@@ -119,14 +119,44 @@ def fill_db(dir_path, db_dict):
     with conn:
         cursor = conn.cursor()
         for key in db_dict.keys():
-            cursor.execute("""INSERT INTO datasets(sensor, orbit, date, 
-            filepath) VALUES (?, ?, ?, ?)""", (db_dict[key]["sensor"],
-                                               db_dict[key]["orbit"],
-                                               db_dict[key]["date"],
-                                               key))
 
+            cursor.execute("""INSERT OR IGNORE INTO datasets(sensor, orbit, 
+            date, filepath) VALUES (?, ?, ?, ?)""",
+                           (db_dict[key]["sensor"],
+                            db_dict[key]["orbit"],
+                            db_dict[key]["date"],
+                            key))
 
-        conn.close()
+            cursor.execute("""INSERT OR IGNORE INTO geometry(sensor, orbit, 
+                        date, proj_epsg, bounds_south, bounds_north, 
+                        bounds_west, bounds_east) VALUES (?, ?, ?, 
+                        ?, ?, ?, ?, ?)""",
+                           (db_dict[key]["sensor"],
+                            db_dict[key]["orbit"],
+                            db_dict[key]["date"],
+                            db_dict[key]["proj_epsg"],
+                            db_dict[key]["bounds_south"],
+                            db_dict[key]["bounds_north"],
+                            db_dict[key]["bounds_west"],
+                            db_dict[key]["bounds_east"]))
+
+            cursor.execute("""INSERT OR IGNORE INTO metadata(sensor, orbit, 
+                        date, acquisition_mode, polarisation, shape, 
+                        xy_resolution, nodata_val, band_dtype, band_min, 
+                        band_max) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                           (db_dict[key]["sensor"],
+                            db_dict[key]["orbit"],
+                            db_dict[key]["date"],
+                            db_dict[key]["acquisition_mode"],
+                            db_dict[key]["polarisation"],
+                            str(db_dict[key]["shape"]),
+                            str(db_dict[key]["xy_resolution"]),
+                            db_dict[key]["nodata_val"],
+                            db_dict[key]["band_dtype"],
+                            db_dict[key]["band_min"],
+                            db_dict[key]["band_max"]))
+
+    conn.close()
 
 
 def data_dict(dir_path):
@@ -175,8 +205,8 @@ def data_dict(dir_path):
                                 "footprint": "insert_footprint_here"}
         except RuntimeError:
             print(os.path.basename(scene))
-            print("Failed to compute min/max because no valid pixels were "
-                  "found in sampling. File will be ignored.")
+            print("No valid pixels were found in sampling. File will be "
+                  "ignored.")
             continue
 
     return data_dict

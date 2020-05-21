@@ -21,7 +21,7 @@ def db_main(dir_path):
 
     # If subdirectory doesn't exist yet: create & fill database. If
     # subdirectory (and presumably a database) already exist then
-    # still fill the database, which should ignore already existing entries
+    # still execute fill_db(), which should ignore already existing entries
     # and add new ones.
     if not os.path.exists(db_path):
         create_db(db_path)
@@ -38,13 +38,15 @@ def data_dict(dir_path):
     :param dir_path: Path to data directory.
     :return data_dict: Dictionary
     """
+    # Search for Sentinel-1 scenes using regular expression
     scenes = [dir_path + "\\" + f for f in os.listdir(dir_path) if
               re.search(r'^S1[AB].*\.tif', f)]
 
     if len(scenes) == 0:
-        raise ImportError("No valid Sentinel-1 GeoTiffs were found in the "
+        raise ImportError("No Sentinel-1 GeoTiffs were found in the "
                           "directory: ", dir_path)
 
+    # Loop over each scene, extract information and store in dict
     data_dict = {}
     for scene in scenes:
         data = gdal.Open(scene, GA_ReadOnly)
@@ -116,7 +118,7 @@ def create_db(db_path, db_name=None):
                 "bounds_east": "REAL",
                 "footprint": "VARCHAR[max]"}
 
-    conn = _create_connection(db_path_name)
+    conn = create_connection(db_path_name)
     with conn:
         cursor = conn.cursor()
 
@@ -140,11 +142,11 @@ def create_db(db_path, db_name=None):
 
         # Metadata table
         cursor.execute(f'CREATE TABLE metadata ({key_string}, {meta_string}, '
-                     f'PRIMARY KEY ({", ".join(key_dict.keys())}))')
+                       f'PRIMARY KEY ({", ".join(key_dict.keys())}))')
 
         # Geometry table
         cursor.execute(f'CREATE TABLE geometry ({key_string}, {geo_string}, '
-                     f'PRIMARY KEY ({", ".join(key_dict.keys())}))')
+                       f'PRIMARY KEY ({", ".join(key_dict.keys())}))')
 
     conn.close()
 
@@ -159,7 +161,7 @@ def fill_db(db_path, db_dict):
 
     db_path_name = db_path + "\\scenes.db"
 
-    conn = _create_connection(db_path_name)
+    conn = create_connection(db_path_name)
     with conn:
         cursor = conn.cursor()
         for key in db_dict.keys():
@@ -203,12 +205,15 @@ def fill_db(db_path, db_dict):
     conn.close()
 
 
-def _create_connection(db_file):
+def create_connection(db_file=None):
     """ create a database connection to the SQLite database
         specified by db_file.
     :param db_file: database file
     :return: Connection object or None
     """
+    if db_file is None:
+        db_file = ""
+
     conn = None
     try:
         conn = sqlite3.connect(db_file)
@@ -222,7 +227,7 @@ def _create_connection(db_file):
 def _get_bounds_res(dataset):
     """Gets information about extent as well as x- and y-resolution of a loaded
     raster file.
-    :param file: osgeo.gdal.Dataset
+    :param dataset: osgeo.gdal.Dataset
     :return: List containing extracted information.
     """
     ulx, xres, xskew, uly, yskew, yres = dataset.GetGeoTransform()
@@ -267,10 +272,6 @@ def _get_filename_info(path):
 
 
 #########################################################################
-data_path = "D:\\GEO450_data"
+#data_path = "D:\\GEO450_data"
 
-db_main(data_path)
-
-
-
-
+#db_main(data_path)

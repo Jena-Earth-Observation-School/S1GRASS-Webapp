@@ -3,8 +3,10 @@
       <title>Welcome!</title>
     </head>
     <body>
-        <div>Test: <a href="/index">Home</a></div>
-        <hr>
+    <div>
+        <a href="{{ url_for('index') }}">Home</a>
+        <a href="{{ url_for('map') }}">Map</a>
+    </div>
         {% block content %}{% endblock %}
     </body>
 </html>

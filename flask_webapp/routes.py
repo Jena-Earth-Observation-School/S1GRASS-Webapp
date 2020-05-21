@@ -1,14 +1,10 @@
 from flask import render_template
+from flask_sqlalchemy import SQLAlchemy
+import sqlite3
+import folium
 from flask_webapp import app
 
 
-"""
-protect forms against attacks
-generated with:
-import secrets
-secrets.token_hex(16)
-"""
-#app.config['SECRET_KEY'] = 'ade2d304eef78f4449e8cfbe86ef0269'
 #app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////sqlite/scenes.db'
 #db = SQLAlchemy(app)
 
@@ -19,6 +15,11 @@ def index():
     user = {'username': 'Marco'}
     return render_template('test.html', user=user)
 
+@app.route('/map')
+def map():
+    start_coords = (46.9540700, 142.7360300)
+    folium_map = folium.Map(location=start_coords, zoom_start=14)
+    return folium_map._repr_html_()
 
 """
 @app.route('/list')
@@ -37,6 +38,3 @@ def list():
 
     return render_template('list.html', keys=keys, rows=rows, names=names)
 """
-
-#if __name__ == '__main__':
-#    app.run(debug=False)

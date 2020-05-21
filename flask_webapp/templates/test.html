@@ -1,8 +1,6 @@
-<html>
-    <head>
-        <title>This is a test</title>
-    </head>
-    <body>
-        <h1>Hello, {{ user.username }}!</h1>
-    </body>
-</html>
+{% extends "base.html" %}
+
+{% block content %}
+    <h1>Hi, {{ user.username }}!</h1>
+    <div><p>This is a test!</p></div>
+{% endblock %}

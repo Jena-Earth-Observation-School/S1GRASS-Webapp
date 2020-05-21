@@ -24,7 +24,7 @@ def setup_grass(version=None, path=None, name=None, crs=None):
         if not os.path.exists(path):
             os.makedirs(path)
     if name is None:
-        name = 'my_awesome_grass_db'
+        name = 'GRASS_db'
 
     if crs is None:
         crs = '4326'
@@ -65,10 +65,6 @@ def get_footprint(ras_name, out_path=None):
     :param out_path:
     :return:
     """
-    #if "grass.script" not in sys.modules:
-    #    setup_grass()
-    #    print("Beware: PyGRASS was loaded with standard settings (e.g. CRS "
-    #          "4326)!")
 
     if out_path is None:
         out_path = grass_path + '\\grass_output\\'

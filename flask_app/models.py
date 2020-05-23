@@ -1,5 +1,5 @@
 from datetime import datetime
-from flask_webapp import db
+from flask_app import db
 
 class Scene(db.Model):
     id = db.Column(db.Integer, primary_key=True)

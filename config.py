@@ -12,5 +12,5 @@ if not os.path.exists(grass_dir):
 
 class Config(object):
     SQLALCHEMY_DATABASE_URI = 'sqlite:///' \
-                              + os.path.join(sqlite_dir, 'webapp.db')
+                              + os.path.join(sqlite_dir, 's1_webapp.db')
     SQLALCHEMY_TRACK_MODIFICATIONS = False

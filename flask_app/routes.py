@@ -2,7 +2,7 @@ from flask import render_template
 from flask_sqlalchemy import SQLAlchemy
 import sqlite3
 import folium
-from flask_webapp import app
+from flask_app import app
 
 
 @app.route('/')

@@ -1,5 +1,5 @@
-from flask_webapp import app, db
-from flask_webapp.models import Scene, Metadata, Geometry
+from flask_app import app, db
+from flask_app.models import Scene, Metadata, Geometry
 
 @app.shell_context_processor
 def make_shell_context():

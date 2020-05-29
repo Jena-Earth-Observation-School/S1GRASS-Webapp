@@ -1,12 +1,13 @@
+from config import Grass
+
 import os
 import sys
+from pathlib import Path
 from osgeo import osr
 from grass_session import Session, get_grass_gisbase
-import grass.script as grass
+import grass.script as gscript
 import grass.script.setup as gsetup
 
-data_path = "D:\\GEO450_data"
-grass_path = data_path + "\\grass"
 
 def setup_grass(version=None, path=None, name=None, crs=None):
     """
@@ -20,15 +21,12 @@ def setup_grass(version=None, path=None, name=None, crs=None):
     if version is None:
         version = 'grass78'
     if path is None:
-        path = grass_path
-        if not os.path.exists(path):
-            os.makedirs(path)
+        path = Grass.path
     if name is None:
         name = 'GRASS_db'
-
     if crs is None:
         crs = '4326'
-    else:
+    else:  # not 100% sure about this, but seems to work fine...
         if osr.SpatialReference().ImportFromEPSG(int(crs)) == 6:
             raise ValueError("The provided EPSG code is not valid.")
 
@@ -40,7 +38,7 @@ def setup_grass(version=None, path=None, name=None, crs=None):
     sys.path.append(os.path.join(os.environ['GISBASE'], 'lib'))
     sys.path.append(os.path.join(os.environ['GISBASE'], 'scripts'))
     sys.path.append(os.path.join(os.environ['GISBASE'], 'etc', 'python'))
-    os.environ['PROJ_LIB'] = 'C:/Program Files/GRASS GIS 7.8/share/proj'
+    os.environ['PROJ_LIB'] = os.path.join(os.environ['GISBASE'], 'share\\proj')
 
     # User-defined settings
     gisdb = path
@@ -55,68 +53,62 @@ def setup_grass(version=None, path=None, name=None, crs=None):
     # Launch session
     gsetup.init(gisbase, gisdb, name, mapset)
     print('Current GRASS GIS 7 environment:')
-    print(grass.gisenv())
+    print(gscript.gisenv())
 
 
-def get_footprint(ras_name, out_path=None):
+def get_footprint(raster, out_path=None):
     """
     bla
-    :param ras_name:
-    :param out_path:
-    :return:
+    :param raster: full path e.g.
+    'D:\\GEO450_data\\S1A__IW___A_20150320T182611_147_VV_grd_mli_norm_geo_db.tif'
+    :return: Footprint as a GeoJSON file located in out_path\footprints
     """
 
     if out_path is None:
-        out_path = grass_path + '\\grass_output\\'
+        out_path = os.path.join(Grass.path, 'output\\footprints')
         if not os.path.exists(out_path):
             os.makedirs(out_path)
 
-    out_name = out_path + ras_name + ".geojson"
+    ras_name = os.path.basename(raster)
+    ras_name = ras_name[:-len(Path(ras_name).suffix)]
+    ras_name_suffix = ras_name + '.geojson'
+    ras_name_foot = ras_name + "_footprint"
+    out_name = os.path.join(out_path, ras_name_suffix)
 
-    # Set computational region
-    grass.run_command('g.region', raster=ras_name)
+    try:
+        # Set computational region
+        gscript.run_command('g.region', raster=ras_name)
+    except:
+        # Import file, then set computational region and continue
+        import_raster(raster, ras_name)
+        gscript.run_command('g.region', raster=ras_name)
 
     # Create temporary raster file with all values set to 1
-    grass.mapcalc("ras_tmp = (abs($a) > 0) * 1", a=ras_name, overwrite=True)
+    gscript.mapcalc("ras_tmp = (abs($a) > 0) * 1", a=ras_name, overwrite=True)
 
     # Create temporary vector file from "ras_tmp"
-    grass.run_command("r.to.vect", input="ras_tmp", output="vec_tmp",
+    gscript.run_command("r.to.vect", input="ras_tmp", output="vec_tmp",
                       type="area")
 
     # Create convex hull from vec_tmp
-    grass.run_command("v.hull", input="vec_tmp", output="vec_tmp_hull",
+    gscript.run_command("v.hull", input="vec_tmp",
+                      output=ras_name_foot,
                       overwrite=True)
 
     # Export as GeoJSON
-    grass.run_command("v.out.ogr", input="vec_tmp_hull",
+    gscript.run_command("v.out.ogr", input=ras_name_foot,
                       output=out_name, format="GeoJSON", overwrite=True)
 
     # Remove tmp-files from mapset
-    grass.run_command("g.remove", type="raster", name="ras_tmp", flags="f")
-    grass.run_command("g.remove", type="vector", name="vec_tmp", flags="f")
-    grass.run_command("g.remove", type="vector", name="vec_tmp_hull",
+    gscript.run_command("g.remove", type="raster", name="ras_tmp", flags="f")
+    gscript.run_command("g.remove", type="vector", name="vec_tmp", flags="f")
+    gscript.run_command("g.remove", type="vector", name=ras_name_foot,
                       flags="f")
 
-    return print("Done! :)")
+    return out_name
 
 
-setup_grass(name='Spain_Donana', crs='32629')
+def import_raster(path, name):
 
-###############################################################################
-
-file1 = data_path + \
-        "\\S1A__IW___A_20150107T182611_147_VV_grd_mli_norm_geo_db.tif"
-file2 = data_path + \
-        "\\S1A__IW___A_20150303T181753_74_VV_grd_mli_norm_geo_db.tif"
-
-# Check if any raster files have already been imported
-for rast in grass.list_strings(type='rast'):
-    print(rast)
-
-# Import files
-grass.run_command("r.in.gdal", input=file1, output="test1", flags="e")
-grass.run_command("r.in.gdal", input=file2, output="test2")
-
-# Create footprint
-get_footprint(ras_name="test1")
+    gscript.run_command("r.in.gdal", input=path, output=name, flags="e")
 

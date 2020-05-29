@@ -9,3 +9,11 @@ db = SQLAlchemy(app)
 migrate = Migrate(app, db)
 
 from flask_app import routes, models
+
+"""
+Flask shell commands:
+flask db init (initialize database)
+flask db migrate (create migration script after modifying db)
+flask db upgrade (execute migration script)
+flask db downgrade (undo last migration)
+"""

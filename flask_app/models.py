@@ -34,7 +34,7 @@ class Geometry(db.Model):
     scene_id = db.Column(db.Integer, db.ForeignKey('scene.id'), index=True)
     columns = db.Column(db.Integer)
     rows = db.Column(db.Integer)
-    epsg = db.Column(db.Integer, index=True)
+    epsg = db.Column(db.String(25), index=True)
     bounds_south = db.Column(db.Float)
     bounds_north = db.Column(db.Float)
     bounds_west = db.Column(db.Float)

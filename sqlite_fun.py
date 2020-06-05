@@ -1,4 +1,4 @@
-from config import Data, Grass
+from config import Data, Grass, Database
 from grass_fun import *
 from flask_app import db
 from flask_app.models import Scene, Metadata, Geometry
@@ -8,31 +8,48 @@ from osgeo.gdalconst import GA_ReadOnly
 import json
 import os
 import re
+import shutil
+import dateutil.parser
 gdal.UseExceptions()
 
 
 def main():
-    pass
+
+    ## Initialize database if it hasn't been done already.
+    if not os.path.isdir("./migrations"):
+        os.system('flask db init')
+
+    ## Setup database scheme if it hasn't been done already.
+    file = os.path.join(Database.path, "s1_webapp.db")
+    if not os.path.isfile(file):
+        os.system('flask db migrate')
+        os.system('flask db upgrade')
+
+    ## Create dictionary with all necessary information.
+    data = create_data_dict()
+
+    ## Add information to database.
+    add_data_to_db(data)
 
 
-def data_dict(dir_path):
+def create_data_dict(dir_path=None, footprint=True):
     """Creates a dictionary with information about each valid Sentinel-1
     .tif (!) file in the data directory. The extracted information is then
     used to fill the SQLite database.
     :param dir_path: Path to data directory.
-    :return data_dict: Dictionary
+    :param footprint: Calculates footprint using GRASS if set to
+    True.
+    :return data_dict: Extracted information [dict]
     """
-    # Search for Sentinel-1 scenes using regular expression
-    scenes = [dir_path + "\\" + f for f in os.listdir(dir_path) if
-              re.search(r'^S1[AB].*\.tif', f)]
 
-    if len(scenes) == 0:
-        raise ImportError("No Sentinel-1 GeoTiffs were found in the "
-                          "directory: ", dir_path)
+    if dir_path is None:
+        dir_path = Data.path
+
+    scenes = _get_filename_list(dir_path)
 
     ## Get EPSG-code from one of the scenes and setup GRASS (sloppy
-    ## try-except-clause just in case, but I'd assume that the user actually
-    ## uses valid files anyway...)
+    ## try-except-clause just in case the first file is faulty, but I'd assume
+    ## that the user actually uses valid files anyway...)
     try:
         epsg = _get_epsg(scenes[0])
     except:
@@ -40,7 +57,7 @@ def data_dict(dir_path):
 
     setup_grass(crs=epsg)
 
-    # Loop over each scene, extract information and store in dict
+    ## Loop over each scene, extract information and store in dict
     data_dict = {}
     for scene in scenes:
         data = gdal.Open(scene, GA_ReadOnly)
@@ -50,13 +67,16 @@ def data_dict(dir_path):
             band_min, band_max = band.ComputeRasterMinMax(True)
 
             proj = osr.SpatialReference(wkt=data.GetProjection())
-            bounds = _get_bounds_res(data)
             file_info = _get_filename_info(scene)
+            bounds = _get_bounds_res(data)
 
-            # Get footprint using GRASS
-            foot_path = get_footprint(scene)
-            with open(foot_path) as foot:
-                footprint = json.load(foot)
+            ## If footprint is True: Get footprint of the file using GRASS.
+            if footprint:
+                foot_path = get_footprint(scene)
+                with open(foot_path) as foot:
+                    f_print = json.load(foot)
+            else:
+                f_print = None
 
             data_dict[scene] = {"sensor": file_info[0],
                                 "orbit": file_info[2],
@@ -74,34 +94,102 @@ def data_dict(dir_path):
                                 "nodata_val": int(band.GetNoDataValue()),
                                 "band_min": band_min,
                                 "band_max": band_max,
-                                "footprint": str(footprint)}
+                                "footprint": str(f_print)}
         except RuntimeError:
             print(os.path.basename(scene))
             print("No valid pixels were found in sampling. File will be "
-                  "ignored.")
+                  "moved to subdirectory 'reject'.")
+
+            ## File was opened in GDAL. Overwrite with 'None' to close.
+            data = None
+
+            reject_dir = os.path.join(Data.path, "reject")
+            if not os.path.exists(reject_dir):
+                os.makedirs(reject_dir)
+            olddir = scene
+            newdir = os.path.join(reject_dir, os.path.basename(scene))
+
+            shutil.move(olddir, newdir)
+
             continue
 
     return data_dict
 
 
-def _get_bounds_res(dataset):
-    """Gets information about extent as well as x- and y-resolution of a loaded
-    raster file.
-    :param dataset: osgeo.gdal.Dataset
-    :return: List containing extracted information.
+def add_data_to_db(data_dict):
+    """Adds information that was extracted using 'create_data_dict()' and
+    stored in data_dict to the database.
+    :param data_dict: Dictionary that contains information to be added to
+    the database.
     """
-    ulx, xres, xskew, uly, yskew, yres = dataset.GetGeoTransform()
-    lrx = ulx + (dataset.RasterXSize * xres)
-    lry = uly + (dataset.RasterYSize * yres)
+    data = data_dict
 
-    return [lrx, lry, ulx, uly, xres, yres]
+    for scene in data.keys():
+        s = Scene(sensor=data[scene]['sensor'],
+                  orbit=data[scene]['orbit'],
+                  date=data[scene]['date'],
+                  filepath=scene)
+        m = Metadata(acq_mode=data[scene]['acquisition_mode'],
+                     polarisation=data[scene]['polarisation'],
+                     resolution=data[scene]['resolution'],
+                     nodata=data[scene]['nodata_val'],
+                     band_min=data[scene]['band_min'],
+                     band_max=data[scene]['band_max'])
+        g = Geometry(columns=data[scene]['columns'],
+                     rows=data[scene]['rows'],
+                     epsg=data[scene]['epsg'],
+                     bounds_south=data[scene]['bounds_south'],
+                     bounds_north=data[scene]['bounds_north'],
+                     bounds_west=data[scene]['bounds_west'],
+                     bounds_east=data[scene]['bounds_east'],
+                     footprint=data[scene]['footprint'])
+
+        db.session.add(s)
+        db.session.add(m)
+        db.session.add(g)
+        db.session.commit()
+
+
+def _get_filename_list(path):
+    """Creates a list of files that haven't been stored in the database yet.
+    The list will be used in 'create_data_dict()' to extract all necessary
+    information from those files.
+    :param path: Full path of a raster file
+    (e.g. "D:\\data_dir\\filename.tif").
+    :return: Scenes that haven't been stored in the database yet. [List]
+    """
+    ## Search for Sentinel-1 scenes using regular expression
+    scenes = [path + "\\" + f for f in os.listdir(path) if
+              re.search(r'^S1[AB].*\.tif', f)]
+
+    if len(scenes) == 0:
+        raise ImportError("No Sentinel-1 GeoTiffs were found in the "
+                          "directory: ", path)
+
+    ## Scenes already in database
+    db_scenes = Scene.query.all()
+
+    ## Only return scenes that are not in the database yet!
+    if len(db_scenes) is 0:
+        return scenes
+
+    else:
+        scenes_new = []
+        for scene in scenes:
+            if any(scene in db.filepath for db in db_scenes):
+                continue
+            else:
+                scenes_new.append(scene)
+
+        return scenes_new
 
 
 def _get_filename_info(path):
     """Gets information about a raster file based on pyroSAR's file naming
     scheme: https://pyrosar.readthedocs.io/en/latest/general/filenaming.html
-    :param path: Path to a raster file (e.g. "D:\\data_dir\\filename.tif)."
-    :return: List containing extracted information.
+    :param path: Full path of a raster file
+    (e.g. "D:\\data_dir\\filename.tif").
+    :return: Extracted information. [List]
     """
     filename = os.path.basename(path)
 
@@ -126,12 +214,31 @@ def _get_filename_info(path):
         pol = None
         print("Could not find polarisation type for: ", filename)
 
-    date = filename[12:27].replace("_", "")
+    d = filename[12:27].replace("_", "")
+    date = dateutil.parser.parse(d)
 
     return [sensor, acq_mode, orbit, pol, date]
 
 
+def _get_bounds_res(dataset):
+    """Gets information about extent as well as x- and y-resolution of a loaded
+    raster file.
+    :param dataset: osgeo.gdal.Dataset
+    :return: Extracted information. [List]
+    """
+    ulx, xres, xskew, uly, yskew, yres = dataset.GetGeoTransform()
+    lrx = ulx + (dataset.RasterXSize * xres)
+    lry = uly + (dataset.RasterYSize * yres)
+
+    return [lrx, lry, ulx, uly, xres, yres]
+
+
 def _get_epsg(path):
+    """ Gets EPSG code from a raster file using GDAL.
+    :param path: Full path of a raster file
+    (e.g. "D:\\data_dir\\filename.tif").
+    :return: EPSG code. [Str]
+    """
 
     data = gdal.Open(path, GA_ReadOnly)
     proj = osr.SpatialReference(wkt=data.GetProjection())
@@ -144,62 +251,3 @@ if __name__ == "__main__":
 
     path = Data.path
     main(path)
-
-
-###################
-
-def test_main(path):
-
-    ## flask db init (not a problem if db & migration stuff already exists!)
-
-    data = data_dict(Data.path)
-
-    db_scenes = Scene.query.all()
-
-    if len(db_scenes) is 0:
-        ## Add all scenes to database
-
-    else:
-        ## 1. Check which scenes are already in the database
-        ## 2. Search for new scenes in data directory
-        ## 3. Create dictionary with information for these new scenes
-        ## 4. Add new scenes to database
-
-    ## flask db migrate
-    ## flask db upgrade
-
-######
-
-db_scenes = Scene.query.all()
-data = data_dict(Data.path)
-
-## Fill db with ALL keys from dict
-for scene in data.keys():
-
-    s = Scene(sensor=data[scene]['sensor'],
-              orbit=data[scene]['orbit'],
-              date=data[scene]['date'],
-              filepath=scene)
-    m = Metadata(acq_mode=data[scene]['acquisition_mode'],
-                 polarisation=data[scene]['polarisation'],
-                 resolution=data[scene]['resolution'],
-                 nodata=data[scene]['nodata_val'],
-                 band_min=data[scene]['band_min'],
-                 band_max=data[scene]['band_max'])
-    g = Geometry(columns=data[scene]['columns'],
-                 rows=data[scene]['rows'],
-                 epsg=data[scene]['epsg'],
-                 bounds_south=data[scene]['bounds_south'],
-                 bounds_north=data[scene]['bounds_north'],
-                 bounds_west=data[scene]['bounds_west'],
-                 bounds_east=data[scene]['bounds_east'],
-                 footprint=data[scene]['footprint'])
-
-    db.session.add(s)
-    db.session.add(m)
-    db.session.add(g)
-    db.session.commit()
-
-
-
-###################

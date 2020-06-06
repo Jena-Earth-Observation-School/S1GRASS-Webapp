@@ -1,15 +1,16 @@
 from flask import render_template
-from flask_sqlalchemy import SQLAlchemy
-import sqlite3
 import folium
+
+from flask_app.tables import *
 from flask_app import app
+from flask_app.models import Scene
 
 
 @app.route('/')
-@app.route('/index')
+@app.route('/home')
 def index():
-    user = {'username': 'Marco'}
-    return render_template('test.html', user=user)
+    return render_template('home.html')
+
 
 @app.route('/map')
 def map():
@@ -17,20 +18,23 @@ def map():
     folium_map = folium.Map(location=start_coords, zoom_start=14)
     return folium_map._repr_html_()
 
-"""
-@app.route('/list')
-def list():
-    con = sqlite3.connect('D:/GEO450_data/sqlite/scenes.db')
-    con.row_factory = sqlite3.Row
 
-    cur = con.cursor()
-    cur.execute('select filepath from datasets')
+@app.route('/overview')
+def overview():
 
-    rows = cur.fetchall()
+    ## Create table (html)
+    table = create_overview_table()
 
-    keys = ['outname_base', 'scene']
-    names = ['identifier', 'location']
-    # keys = rows[0].keys()
+    return render_template('table.html', table=table)
 
-    return render_template('list.html', keys=keys, rows=rows, names=names)
-"""
+
+@app.route('/meta/<scene_id>')
+def meta(scene_id):
+
+    ## Get scene from database
+    s = Scene.query.filter_by(id=scene_id).first_or_404()
+
+    ## Create table (html)
+    table = create_meta_table(s)
+
+    return render_template('table.html', table=table)

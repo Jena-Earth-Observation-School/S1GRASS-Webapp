@@ -1,12 +1,18 @@
-<html>
-    <head>
-      <title>Welcome!</title>
-    </head>
-    <body>
-    <div>
-        <a href="{{ url_for('index') }}">Home</a>
-        <a href="{{ url_for('map') }}">Map</a>
+{% extends 'bootstrap/base.html' %}
+
+{% block title %}
+    This is a title.
+{% endblock %}
+
+{% block navbar %}
+    <nav class="navbar navbar-default">
+        This is a navbar.
+    </nav>
+{% endblock %}
+
+{% block content %}
+    <div class="container">
+        {% block app_content %}
+        {% endblock %}
     </div>
-        {% block content %}{% endblock %}
-    </body>
-</html>
+{% endblock %}

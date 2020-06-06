@@ -134,7 +134,8 @@ def add_data_to_db(data_dict):
                      resolution=data[scene]['resolution'],
                      nodata=data[scene]['nodata_val'],
                      band_min=data[scene]['band_min'],
-                     band_max=data[scene]['band_max'])
+                     band_max=data[scene]['band_max'],
+                     s1_scene=s)
         g = Geometry(columns=data[scene]['columns'],
                      rows=data[scene]['rows'],
                      epsg=data[scene]['epsg'],
@@ -142,7 +143,8 @@ def add_data_to_db(data_dict):
                      bounds_north=data[scene]['bounds_north'],
                      bounds_west=data[scene]['bounds_west'],
                      bounds_east=data[scene]['bounds_east'],
-                     footprint=data[scene]['footprint'])
+                     footprint=data[scene]['footprint'],
+                     s1_scene=s)
 
         db.session.add(s)
         db.session.add(m)

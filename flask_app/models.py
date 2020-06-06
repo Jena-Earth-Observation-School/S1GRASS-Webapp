@@ -8,8 +8,8 @@ class Scene(db.Model):
     date = db.Column(db.DateTime, index=True, unique=True)
     filepath = db.Column(db.String(1000), index=True, unique=True)
     time_added = db.Column(db.DateTime, index=True, default=datetime.utcnow)
-    meta = db.relationship('Metadata', backref='s1_scene', lazy=True)
-    geo = db.relationship('Geometry', backref='s1_scene', lazy=True)
+    meta = db.relationship('Metadata', backref='s1_scene', lazy='dynamic')
+    geo = db.relationship('Geometry', backref='s1_scene', lazy='dynamic')
 
     def __repr__(self):
         return '<Scene {}>'.format(self.filepath)

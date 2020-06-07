@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 
 {% block app_content %}
-    <h3>This needs to be a dynamic title, based on which table is displayed (-> ToDo!)</h3>
+    <h3>{{title}}</h3>
     <hr>
     {{ table|safe }}
 {% endblock %}

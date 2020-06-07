@@ -1,4 +1,4 @@
-from flask_table import Table, Col
+from flask_table import Table, Col, LinkCol
 import os
 
 from flask_app.models import Scene
@@ -8,6 +8,7 @@ class OverviewTable(Table):
     classes = ['table table-striped']
     id = Col('ID')
     filename = Col('Filename')
+    metadata = LinkCol('Metadata', 'meta', url_kwargs=dict(scene_id='id'))
 
 
 class MetaTable(Table):

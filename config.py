@@ -17,7 +17,7 @@ if not os.path.exists(data_dir):
                                 "work with.")
 
 ## Save sqlite and grass stuff in subdirectories of the data directory,
-## so the user can access and work with both outside of this webapp.
+## so the user can also access and work with both outside of this webapp.
 sqlite_dir = os.path.join(data_dir, 'sqlite')
 grass_dir = os.path.join(data_dir, 'grass')
 grass_dir_out = os.path.join(grass_dir, 'output')
@@ -42,6 +42,7 @@ class Data(object):
 
 class Grass(object):
     path = grass_dir
+    path_out = grass_dir_out
 
 class Database(object):
     path = sqlite_dir

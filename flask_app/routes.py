@@ -2,8 +2,18 @@ from flask import render_template
 import folium
 
 from flask_app import app
+from config import Data
+from sqlite_fun import db_main
 from flask_app.tables import *
+#from flask_app.maps import get_coords_from_first
 from flask_app.models import Scene
+
+
+@app.before_first_request
+def initialize_database():
+    ## ONLY TEMPORARY(!) to trigger initialization/update of the database
+    ## before other sites are loaded...
+    db_main()
 
 
 @app.route('/')

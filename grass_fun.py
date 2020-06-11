@@ -1,6 +1,7 @@
 from config import Grass
 
 import os
+import subprocess
 import sys
 from pathlib import Path
 from osgeo import osr
@@ -60,14 +61,14 @@ def get_footprint(raster):
     """Uses GRASS to calculate the exact footprint (not extent!) of a raster.
     :param raster: full path e.g.
     'D:\\GEO450_data\\S1A__IW___A_20150320T182611_147_VV_grd_mli_norm_geo_db.tif'
-    :return: GeoJSON file located in out_path\footprints.
+    :return: Path of the generated GeoJSON file
     """
     ## Create output folder if it doesn't exist already.
     out_path = os.path.join(Grass.path, 'output\\footprints')
     if not os.path.exists(out_path):
         os.makedirs(out_path)
 
-    ## Define filenames and -path.
+    ## Define filenames and -paths.
     ras_name = os.path.basename(raster)
     ras_name = ras_name[:-len(Path(ras_name).suffix)]
     ras_name_suffix = ras_name + '.geojson'
@@ -114,3 +115,42 @@ def get_footprint(raster):
                           flags="f")
 
         return out_name
+
+
+def reproject_geojson(geojson_path, epsg):
+    """All calculations in GRASS are done in the original projection but WGS84
+    is usually needed for the web (e.g. in Leaflet maps). It's easier to
+    just reproject into EPSG 4326 for web-stuff right away instead
+    of having this problem later on. And it's also way easier to just do it
+    with a simple ogr2ogr command instead of working with multiple GRASS
+    locations in different projections and creating a mess...
+
+    :param geojson_path: Path to GeoJSON file that is supposed to be
+    reprojected. In the process of generating the database, the output of
+    get_footprint() is used as the input path.
+    :param epsg: EPSG code of the input file.
+    :return: Path of the reprojected GeoJSON file
+    """
+
+    ## Define filenames and -paths
+    foot_in = geojson_path
+    base = os.path.basename(geojson_path)
+    foot_out = base[:-len(Path(base).suffix)]
+    foot_out = foot_out + '_4326.geojson'
+    foot_out = os.path.join(os.path.dirname(geojson_path), foot_out)
+
+    ## Define ogr2ogr command
+    ogr_call = str('ogr2ogr -f "GeoJSON" ' + foot_out + ' ' + foot_in
+                   + ' -s_srs ' + 'EPSG:' + epsg + ' -t_srs EPSG:4326')
+
+    ## Execute ogr2ogr command
+    subprocess.call(ogr_call, shell=True)
+
+    ## Delete original file
+    os.remove(foot_in)
+
+    ## Return new path
+    return foot_out
+
+
+

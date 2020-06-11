@@ -1,4 +1,4 @@
-from config import Data, Grass, Database
+from config import Data, Database
 from grass_fun import *
 from flask_app import db
 from flask_app.models import Scene, Metadata, Geometry
@@ -13,7 +13,7 @@ import dateutil.parser
 gdal.UseExceptions()
 
 
-def main():
+def db_main():
 
     ## Initialize database if it hasn't been done already.
     if not os.path.isdir("./migrations"):
@@ -66,17 +66,29 @@ def create_data_dict(dir_path=None, footprint=True):
         try:
             band_min, band_max = band.ComputeRasterMinMax(True)
 
-            proj = osr.SpatialReference(wkt=data.GetProjection())
+            ## Get information that is stored in the filename itself (#pyroSAR)
             file_info = _get_filename_info(scene)
-            bounds = _get_bounds_res(data)
 
-            ## If footprint is True: Get footprint of the file using GRASS.
+            ## Get extent and resolution
+            bounds = _get_extent_resolution(data)
+
+            ## If footprint is True: Calculate footprint using GRASS.
+            ## If you read this, then this parameter is actually always set
+            ## to 'True' and I haven't included the option to not use GRASS
+            ## at all which would result in the footprint column of the
+            ## database to just be empty.
             if footprint:
                 foot_path = get_footprint(scene)
-                with open(foot_path) as foot:
-                    f_print = json.load(foot)
+
+                ## Reproject into EPSG 4326
+                new_foot_path = reproject_geojson(foot_path, epsg)
+
+                ## Load footprint and store as string in the db
+                with open(new_foot_path) as foot:
+                    f_json = json.load(foot)
+                    f_string = json.dumps(f_json)
             else:
-                f_print = None
+                f_string = None
 
             data_dict[scene] = {"sensor": file_info[0],
                                 "orbit": file_info[2],
@@ -85,7 +97,7 @@ def create_data_dict(dir_path=None, footprint=True):
                                 "polarisation": file_info[3],
                                 "columns": data.RasterXSize,
                                 "rows": data.RasterYSize,
-                                "epsg": str(proj.GetAttrValue('AUTHORITY', 1)),
+                                "epsg": epsg,
                                 "bounds_south": bounds[0],
                                 "bounds_north": bounds[2],
                                 "bounds_west": bounds[3],
@@ -94,7 +106,7 @@ def create_data_dict(dir_path=None, footprint=True):
                                 "nodata_val": int(band.GetNoDataValue()),
                                 "band_min": band_min,
                                 "band_max": band_max,
-                                "footprint": str(f_print)}
+                                "footprint": f_string}
         except RuntimeError:
             print(os.path.basename(scene))
             print("No valid pixels were found in sampling. File will be "
@@ -117,8 +129,8 @@ def create_data_dict(dir_path=None, footprint=True):
 
 
 def add_data_to_db(data_dict):
-    """Adds information that was extracted using 'create_data_dict()' and
-    stored in data_dict to the database.
+    """Adds information that was extracted using 'create_data_dict()' to the
+    database.
     :param data_dict: Dictionary that contains information to be added to
     the database.
     """
@@ -222,7 +234,7 @@ def _get_filename_info(path):
     return [sensor, acq_mode, orbit, pol, date]
 
 
-def _get_bounds_res(dataset):
+def _get_extent_resolution(dataset):
     """Gets information about extent as well as x- and y-resolution of a loaded
     raster file.
     :param dataset: osgeo.gdal.Dataset
@@ -247,9 +259,3 @@ def _get_epsg(path):
     epsg = str(proj.GetAttrValue('AUTHORITY', 1))
 
     return epsg
-
-
-if __name__ == "__main__":
-
-    path = Data.path
-    main(path)

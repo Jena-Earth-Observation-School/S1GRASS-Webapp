@@ -25,10 +25,11 @@ def db_main():
         os.system('flask db migrate')
         os.system('flask db upgrade')
 
-    ## Create dictionary with all necessary information.
+    ## Create dictionary with all necessary information. This also includes
+    ## setting up GRASS and importing / reprojecting all files.
     data = create_data_dict()
 
-    ## Add information to database.
+    ## Add extracted information to database.
     add_data_to_db(data)
 
 
@@ -42,20 +43,25 @@ def create_data_dict(dir_path=None, footprint=True):
     :return data_dict: Extracted information [dict]
     """
 
+    ## Define path to data directory
     if dir_path is None:
         dir_path = Data.path
 
+    ## List all Sentinel-1 GeoTiffs
     scenes = _get_filename_list(dir_path)
 
     ## Get EPSG-code from one of the scenes and setup GRASS (sloppy
-    ## try-except-clause just in case the first file is faulty, but I'd assume
-    ## that the user actually uses valid files anyway...)
+    ## try-except-clause just in case the first file is faulty. Might need
+    # to think of something else here.)
     try:
         epsg = _get_epsg(scenes[0])
     except:
         epsg = _get_epsg(scenes[1])
 
+    ## Setup two GRASS Locations. One with the original crs and another in
+    ## WGS84.
     setup_grass(crs=epsg)
+    setup_grass(crs='4326')
 
     ## Loop over each scene, extract information and store in dict
     data_dict = {}
@@ -72,11 +78,8 @@ def create_data_dict(dir_path=None, footprint=True):
             ## Get extent and resolution
             bounds = _get_extent_resolution(data)
 
+            """
             ## If footprint is True: Calculate footprint using GRASS.
-            ## If you read this, then this parameter is actually always set
-            ## to 'True' and I haven't included the option to not use GRASS
-            ## at all which would result in the footprint column of the
-            ## database to just be empty.
             if footprint:
                 foot_path = get_footprint(scene)
 
@@ -89,6 +92,8 @@ def create_data_dict(dir_path=None, footprint=True):
                     f_string = json.dumps(f_json)
             else:
                 f_string = None
+            """
+            f_string = None
 
             data_dict[scene] = {"sensor": file_info[0],
                                 "orbit": file_info[2],
@@ -107,6 +112,7 @@ def create_data_dict(dir_path=None, footprint=True):
                                 "band_min": band_min,
                                 "band_max": band_max,
                                 "footprint": f_string}
+
         except RuntimeError:
             print(os.path.basename(scene))
             print("No valid pixels were found in sampling. File will be "
@@ -115,6 +121,8 @@ def create_data_dict(dir_path=None, footprint=True):
             ## File was opened in GDAL. Overwrite with 'None' to close.
             data = None
 
+            ## Create subdirectory for rejected files that for some reason
+            ## are faulty and can't be used
             reject_dir = os.path.join(Data.path, "reject")
             if not os.path.exists(reject_dir):
                 os.makedirs(reject_dir)

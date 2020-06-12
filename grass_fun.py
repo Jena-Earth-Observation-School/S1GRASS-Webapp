@@ -10,28 +10,18 @@ import grass.script as gscript
 import grass.script.setup as gsetup
 
 
-def setup_grass(version=None, path=None, name=None, crs=None):
-    """
-    bla
-    :param version:
-    :param path:
-    :param name:
-    :param crs:
-    :return:
-    """
+def setup_grass(version=None, path=None, crs=None, name=None):
+
     if version is None:
         version = 'grass78'
     if path is None:
         path = Grass.path
-    if name is None:
-        name = 'GRASS_db'
     if crs is None:
-        crs = '4326'
-    else:  # not 100% sure about this, but seems to work fine...
-        if osr.SpatialReference().ImportFromEPSG(int(crs)) == 6:
-            raise ValueError("The provided EPSG code is not valid.")
+        raise ValueError("Please provide a valid EPSG code.")
+    if name is None:
+        name = f'GRASS_db_{crs}'
 
-    # General GRASS setup
+    ## General GRASS setup
     os.environ['GRASSBIN'] = version
     gisbase = get_grass_gisbase()
     os.environ['GISBASE'] = gisbase
@@ -41,28 +31,42 @@ def setup_grass(version=None, path=None, name=None, crs=None):
     sys.path.append(os.path.join(os.environ['GISBASE'], 'etc', 'python'))
     os.environ['PROJ_LIB'] = os.path.join(os.environ['GISBASE'], 'share\\proj')
 
-    # User-defined settings
+    ## User-defined settings
     gisdb = path
     mapset = 'PERMANENT'
 
-    # Open a GRASS session and create mapset if it doesn't exist already
+    ## Open a GRASS session and create mapset if it doesn't exist already
     with Session(gisdb=gisdb,
                  location=name,
                  create_opts='EPSG:' + crs) as session:
         pass
 
-    # Launch session
+
+def start_grass_session(crs=None):
+
+    if crs is None:
+        raise ValueError("Please provide a valid EPSG code as crs.")
+
+    gisbase = get_grass_gisbase()
+    gisdb = Grass.path
+    name = f'GRASS_db_{crs}'
+    mapset = 'PERMANENT'
+
+    ## Check if Location with name exists, otherwise user should run setup
+    # first!
+
     gsetup.init(gisbase, gisdb, name, mapset)
     print('Current GRASS GIS 7 environment:')
     print(gscript.gisenv())
 
 
+"""
 def get_footprint(raster):
-    """Uses GRASS to calculate the exact footprint (not extent!) of a raster.
+    \"""Uses GRASS to calculate the exact footprint (not extent!) of a raster.
     :param raster: full path e.g.
     'D:\\GEO450_data\\S1A__IW___A_20150320T182611_147_VV_grd_mli_norm_geo_db.tif'
     :return: Path of the generated GeoJSON file
-    """
+    \"""
     ## Create output folder if it doesn't exist already.
     out_path = os.path.join(Grass.path, 'output\\footprints')
     if not os.path.exists(out_path):
@@ -118,7 +122,8 @@ def get_footprint(raster):
 
 
 def reproject_geojson(geojson_path, epsg):
-    """All calculations in GRASS are done in the original projection but WGS84
+    \"""All calculations in GRASS are done in the original projection but 
+WGS84
     is usually needed for the web (e.g. in Leaflet maps). It's easier to
     just reproject into EPSG 4326 for web-stuff right away instead
     of having this problem later on. And it's also way easier to just do it
@@ -130,7 +135,7 @@ def reproject_geojson(geojson_path, epsg):
     get_footprint() is used as the input path.
     :param epsg: EPSG code of the input file.
     :return: Path of the reprojected GeoJSON file
-    """
+    \"""
 
     ## Define filenames and -paths
     foot_in = geojson_path
@@ -140,8 +145,8 @@ def reproject_geojson(geojson_path, epsg):
     foot_out = os.path.join(os.path.dirname(geojson_path), foot_out)
 
     ## Define ogr2ogr command
-    ogr_call = str('ogr2ogr -f "GeoJSON" ' + foot_out + ' ' + foot_in
-                   + ' -s_srs ' + 'EPSG:' + epsg + ' -t_srs EPSG:4326')
+    ogr_call = str(f'ogr2ogr -f "GeoJSON" {foot_out} {foot_in} -s_srs EPSG:'
+                   f'{epsg} -t_srs EPSG:4326')
 
     ## Execute ogr2ogr command
     subprocess.call(ogr_call, shell=True)
@@ -152,5 +157,4 @@ def reproject_geojson(geojson_path, epsg):
     ## Return new path
     return foot_out
 
-
-
+"""

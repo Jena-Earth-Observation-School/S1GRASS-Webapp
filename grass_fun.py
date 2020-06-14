@@ -1,13 +1,57 @@
 from config import Grass
+from flask_app import db
+from flask_app.models import Scene, GrassOutput
 
 import os
-import subprocess
 import sys
 from pathlib import Path
-from osgeo import osr
 from grass_session import Session, get_grass_gisbase
 import grass.script as gscript
 import grass.script.setup as gsetup
+
+
+def grass_main(scenes, epsg):
+    """This workflow first sets up GRASS if the corresponding directories
+    can't be found in Grass.path. Then each scene in the list provided by
+    the parameter 'scenes' will be imported into the GRASS Location that was
+    set up using the most common original CRS of the data and then
+    reprojected and imported into another GRASS Location that was set up
+    in WGS84.
+    :param scenes: List of scenes that was created while running db_main().
+    Each scene is listed as the full path.
+    :param epsg: Most common CRS in the dataset. Also created while running
+    db_main().
+    """
+    ## Setup two GRASS Locations if it hasn't been done already. One with the
+    ## most common original CRS and another in WGS84 for displaying in the
+    ## webapp.
+    location_orig = os.path.join(Grass.path, f'GRASS_db_{epsg}')
+    location_4326 = os.path.join(Grass.path, 'Grass_db_4326')
+
+    if not os.path.isdir(location_orig):
+        setup_grass(crs=epsg)
+    if not os.path.isdir(location_4326):
+        setup_grass(crs='4326')
+
+    ## Import scenes into GRASS Location in the original CRS
+    start_grass_session(crs=epsg)
+    for scene in scenes:
+        import_to_grass(scene)
+
+    ## Reproject scenes by importing into GRASS Location in WGS84. Each
+    ## scene will then be exported as a Cloud Optimized GeoTiff and a
+    ## dictionary with information to store in the database will be generated.
+    start_grass_session(crs='4326')
+    info_dict = {}
+    for scene in scenes:
+        reproject_scene(scene=scene, crs_in=epsg)
+        cog_path = export_cog(scene=scene, crs='4326')
+
+        info_dict[scene] = {'description': 'export_cog_4326',
+                            'filepath': cog_path}
+
+    ## Add information from info_dict to the database
+    add_grass_output_to_db(info_dict)
 
 
 def setup_grass(version=None, path=None, crs=None, name=None):
@@ -43,24 +87,135 @@ def setup_grass(version=None, path=None, crs=None, name=None):
 
 
 def start_grass_session(crs=None):
-
+    """Starts a GRASS session with a GRASS Location that already exists and
+    was set up with the provided CRS.
+    :param crs: EPSG code (e.g. '32629') [Str]
+    :return: GRASS session
+    """
+    location = os.path.join(Grass.path, f'GRASS_db_{crs}')
+    if not os.path.isdir(location):
+        raise ValueError(f"A GRASS Location in EPSG {crs} has not been set "
+                         f"up yet. Please run 'setup_grass(crs='{crs}')' "
+                         f"first")
     if crs is None:
-        raise ValueError("Please provide a valid EPSG code as crs.")
+        raise ValueError("Please provide a valid EPSG code.")
 
     gisbase = get_grass_gisbase()
     gisdb = Grass.path
     name = f'GRASS_db_{crs}'
     mapset = 'PERMANENT'
 
-    ## Check if Location with name exists, otherwise user should run setup
-    # first!
-
     gsetup.init(gisbase, gisdb, name, mapset)
     print('Current GRASS GIS 7 environment:')
     print(gscript.gisenv())
 
 
+def import_to_grass(scene):
+    """Initial import of scenes into the GRASS location of original
+    projection (e.g. EPSG 32629)
+    :param scene: full path e.g.
+    'D:\\GEO450_data\\S1A__IW___A_20150320T182611_147_VV_grd_mli_norm_geo_db.tif'
+    """
+    ## Define filename
+    base = os.path.basename(scene)
+    scene_name = base[:-len(Path(base).suffix)]
+
+    ## Run GRASS Import module
+    try:
+        gscript.run_command("r.in.gdal", input=scene, output=scene_name,
+                            flags="e", quiet=True)
+    except:
+        pass
+
+
+def reproject_scene(scene, crs_in=None):
+    """Reproject scenes from CRS that is defined by the parameter 'crs_in' and
+    into the CRS of the GRASS session that is currently is running. Also
+    export the scene as a Cloud Optimized GeoTiff.
+    :param scene: full path e.g.
+    'D:\\GEO450_data\\S1A__IW___A_20150320T182611_147_VV_grd_mli_norm_geo_db.tif'
+    :param crs_in: Source CRS (e.g. '32629') [Str]
+    :return: Scene imported and reprojected into destination CRS.
+    """
+    if crs_in is None:
+        raise ValueError("Please provide a valid EPSG code for 'crs_in'.")
+
+    ## Define filename
+    base = os.path.basename(scene)
+    scene_name = base[:-len(Path(base).suffix)]
+
+    ## Parse r.proj to get information about the bounds of the scene once
+    ## projected into the destination projection
+    region = gscript.parse_command('r.proj', input=scene_name,
+                                   location=f'GRASS_db_{crs_in}',
+                                   mapset="PERMANENT", flags="g", quiet=True,
+                                   parse=(gscript.parse_key_val, {'sep': '=',
+                                                                  'vsep': ' '})
+                                   )
+
+    ## Use parsed information to set the region
+    gscript.run_command('g.region', n=region['n'], s=region['s'],
+                        w=region['w'], e=region['e'],
+                        rows=region['rows'], cols=region['cols'])
+
+    ## Import & reproject
+    gscript.run_command('r.proj', input=scene_name,
+                        location=f'GRASS_db_{crs_in}',
+                        mapset='PERMANENT', memory=500, quiet=True)
+
+
+def export_cog(scene, crs):
+    """Export as a Cloud Optimized GeoTiff.
+    :param scene: full path e.g.
+    'D:\\GEO450_data\\S1A__IW___A_20150320T182611_
+    147_VV_grd_mli_norm_geo_db.tif' [Str]
+    :param crs: CRS of the current GRASS session. [Str]
+    :return: Path to the exported file. [Str]
+    """
+    ## Create output directory if it doesn't exist already
+    out_dir = os.path.join(Grass.path, f'output\\cog_{crs}')
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+
+    ## Define filename and full output path
+    base = os.path.basename(scene)
+    scene_name = base[:-len(Path(base).suffix)]
+    scene_name_new = f'{scene_name}_{crs}.tif'
+    out_path = os.path.join(out_dir, scene_name_new)
+
+    ## Run GRASS output module
+    gscript.run_command("r.out.gdal", input=scene_name,
+                        output=out_path, format='GTiff',
+                        createopt="TILED=YES,COMPRESS=DEFLATE",
+                        overviews=4, quiet=True)
+
+    return out_path
+
+
+def add_grass_output_to_db(info_dict):
+    """
+
+    :param info_dict:
+    :return:
+    """
+
+    info = info_dict
+
+    for scene in info.keys():
+
+        s = Scene.query.filter_by(filepath=scene)
+
+        go = GrassOutput(description=info[scene]['description'],
+                         filepath=info[scene]['filepath'],
+                         s1_scene=s)
+        db.session.add(go)
+        db.session.commit()
+
+
 """
+import subprocess
+from osgeo import osr
+
 def get_footprint(raster):
     \"""Uses GRASS to calculate the exact footprint (not extent!) of a raster.
     :param raster: full path e.g.

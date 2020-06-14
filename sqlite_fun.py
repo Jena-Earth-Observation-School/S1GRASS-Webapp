@@ -39,13 +39,17 @@ def db_main():
     ## Create dictionary with all necessary information.
     data_dict, epsg_list = create_data_dict(scenes=scenes_list)
 
+    ## Create new list of scenes in case any were rejected while running
+    ## create_data_dict()
+    scene_list_new = list(data_dict.keys())
+
     ## Add extracted information to database.
     add_data_to_db(data_dict)
 
     ## Get most common epsg from epsg_list
     epsg = max(set(epsg_list), key=epsg_list.count)
 
-    return scenes_list, epsg
+    return scene_list_new, epsg
 
 
 def create_filename_list(path=None):
@@ -176,34 +180,34 @@ def create_data_dict(scenes=None, footprint=True):
     return data_dict, epsg_list
 
 
-def add_data_to_db(data_dict):
+def add_data_to_db(info_dict):
     """Adds information that was extracted using 'create_data_dict()' to the
     database.
-    :param data_dict: Dictionary that contains information to be added to
+    :param info_dict: Dictionary that contains information to be added to
     the database.
     """
-    data = data_dict
+    info = info_dict
 
-    for scene in data.keys():
-        s = Scene(sensor=data[scene]['sensor'],
-                  orbit=data[scene]['orbit'],
-                  date=data[scene]['date'],
+    for scene in info.keys():
+        s = Scene(sensor=info[scene]['sensor'],
+                  orbit=info[scene]['orbit'],
+                  date=info[scene]['date'],
                   filepath=scene)
-        m = Metadata(acq_mode=data[scene]['acquisition_mode'],
-                     polarisation=data[scene]['polarisation'],
-                     resolution=data[scene]['resolution'],
-                     nodata=data[scene]['nodata_val'],
-                     band_min=data[scene]['band_min'],
-                     band_max=data[scene]['band_max'],
+        m = Metadata(acq_mode=info[scene]['acquisition_mode'],
+                     polarisation=info[scene]['polarisation'],
+                     resolution=info[scene]['resolution'],
+                     nodata=info[scene]['nodata_val'],
+                     band_min=info[scene]['band_min'],
+                     band_max=info[scene]['band_max'],
                      s1_scene=s)
-        g = Geometry(columns=data[scene]['columns'],
-                     rows=data[scene]['rows'],
-                     epsg=data[scene]['epsg'],
-                     bounds_south=data[scene]['bounds_south'],
-                     bounds_north=data[scene]['bounds_north'],
-                     bounds_west=data[scene]['bounds_west'],
-                     bounds_east=data[scene]['bounds_east'],
-                     footprint=data[scene]['footprint'],
+        g = Geometry(columns=info[scene]['columns'],
+                     rows=info[scene]['rows'],
+                     epsg=info[scene]['epsg'],
+                     bounds_south=info[scene]['bounds_south'],
+                     bounds_north=info[scene]['bounds_north'],
+                     bounds_west=info[scene]['bounds_west'],
+                     bounds_east=info[scene]['bounds_east'],
+                     footprint=info[scene]['footprint'],
                      s1_scene=s)
 
         db.session.add(s)

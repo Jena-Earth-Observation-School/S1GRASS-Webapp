@@ -4,16 +4,19 @@ import folium
 from flask_app import app
 from config import Data
 from sqlite_fun import db_main
+from grass_fun import grass_main
 from flask_app.tables import *
 #from flask_app.maps import get_coords_from_first
 from flask_app.models import Scene
 
 
 @app.before_first_request
-def initialize_database():
-    ## ONLY TEMPORARY(!) to trigger initialization/update of the database
-    ## before other sites are loaded...
-    db_main()
+def initialize():
+    ## Create (or update) SQLite database
+    scenes, epsg = db_main()
+
+    ## Setup (or update) GRASS database
+    grass_main(scenes, epsg)
 
 
 @app.route('/')

@@ -12,11 +12,17 @@ from flask_app.models import Scene
 
 @app.before_first_request
 def initialize():
-    ## Create (or update) SQLite database
-    scenes, epsg = db_main()
 
-    ## Setup (or update) GRASS database
-    grass_main(scenes, epsg)
+    try:
+        ## Create (or update) SQLite database
+        scenes, epsg = db_main()
+
+        ## Setup (or update) GRASS database
+        grass_main(scenes, epsg)
+
+    except:
+        pass
+
 
 
 @app.route('/')

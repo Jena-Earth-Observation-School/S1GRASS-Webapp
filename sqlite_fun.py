@@ -1,11 +1,10 @@
 from config import Data, Database
-from grass_fun import *
 from flask_app import db
 from flask_app.models import Scene, Metadata, Geometry
 
 from osgeo import gdal, osr
 from osgeo.gdalconst import GA_ReadOnly
-import json
+#import json
 import os
 import re
 import shutil
@@ -14,6 +13,13 @@ gdal.UseExceptions()
 
 
 def db_main():
+    """This workflow first uses flask-migrate to initialize the database
+    scheme and sets up the database. It will then search the provided data
+    directory for Sentinel-1 GeoTiffs. Information will be extracted from all
+    scenes that haven't been imported to the database yet and added to the
+    database. The most common CRS in the dataset will also be determined,
+    which is used to set up GRASS.
+    """
 
     ## Initialize database if it hasn't been done already.
     if not os.path.isdir("./migrations"):
@@ -25,46 +31,76 @@ def db_main():
         os.system('flask db migrate')
         os.system('flask db upgrade')
 
-    ## Create dictionary with all necessary information. This also includes
-    ## setting up GRASS and importing / reprojecting all files.
-    data = create_data_dict()
+    ## Create a list of files that haven't been stored in the database yet.
+    ## Either this will just list all files because nothing has been
+    ## added to the db yet or it will update the db with new files.
+    scenes_list = create_filename_list()
+
+    ## Create dictionary with all necessary information.
+    data_dict, epsg_list = create_data_dict(scenes=scenes_list)
 
     ## Add extracted information to database.
-    add_data_to_db(data)
+    add_data_to_db(data_dict)
+
+    ## Get most common epsg from epsg_list
+    epsg = max(set(epsg_list), key=epsg_list.count)
+
+    return scenes_list, epsg
 
 
-def create_data_dict(dir_path=None, footprint=True):
-    """Creates a dictionary with information about each valid Sentinel-1
-    .tif (!) file in the data directory. The extracted information is then
-    used to fill the SQLite database.
-    :param dir_path: Path to data directory.
-    :param footprint: Calculates footprint using GRASS if set to
-    True.
-    :return data_dict: Extracted information [dict]
+def create_filename_list(path=None):
+    """Creates a list of files that haven't been stored in the database yet.
+    The list will be used in 'create_data_dict()' to extract all necessary
+    information from those files.
+    :param path: Full path of a raster file
+    (e.g. "D:\\data_dir\\filename.tif").
+    :return: Scenes that haven't been stored in the database yet. [List]
     """
 
     ## Define path to data directory
-    if dir_path is None:
-        dir_path = Data.path
+    if path is None:
+        path = Data.path
 
-    ## List all Sentinel-1 GeoTiffs
-    scenes = _get_filename_list(dir_path)
+    ## Search for Sentinel-1 scenes using regular expression
+    scenes = [path + "\\" + f for f in os.listdir(path) if
+              re.search(r'^S1[AB].*\.tif', f)]
 
-    ## Get EPSG-code from one of the scenes and setup GRASS (sloppy
-    ## try-except-clause just in case the first file is faulty. Might need
-    # to think of something else here.)
-    try:
-        epsg = _get_epsg(scenes[0])
-    except:
-        epsg = _get_epsg(scenes[1])
+    if len(scenes) == 0:
+        raise ImportError("No Sentinel-1 GeoTiffs were found in the "
+                          "directory: ", path)
 
-    ## Setup two GRASS Locations. One with the original crs and another in
-    ## WGS84.
-    setup_grass(crs=epsg)
-    setup_grass(crs='4326')
+    ## Scenes already in database
+    db_scenes = Scene.query.all()
 
-    ## Loop over each scene, extract information and store in dict
+    ## Only return scenes that are not in the database yet!
+    if len(db_scenes) is 0:
+        return scenes
+
+    else:
+        scenes_new = []
+        for scene in scenes:
+            if any(scene in db.filepath for db in db_scenes):
+                continue
+            else:
+                scenes_new.append(scene)
+
+        return scenes_new
+
+
+def create_data_dict(scenes=None, footprint=True):
+    """Creates a dictionary with information about each valid Sentinel-1
+    .tif (!) file in the data directory. The extracted information is then
+    used to fill the SQLite database.
+    :param scenes: List of scenes created with get_filename_list().
+    :param footprint: Calculates footprint using GRASS if set to
+    True. (DEACTIVATED)
+    :return data_dict: Extracted information [dict]
+    """
+
+    ## Loop over each scene, extract information and store in dict. Also
+    # store EPSG code of each scene in a list.
     data_dict = {}
+    epsg_list = []
     for scene in scenes:
         data = gdal.Open(scene, GA_ReadOnly)
         band = data.GetRasterBand(1)
@@ -77,6 +113,10 @@ def create_data_dict(dir_path=None, footprint=True):
 
             ## Get extent and resolution
             bounds = _get_extent_resolution(data)
+
+            ## Get EPSG and append to list
+            epsg = _get_epsg(scene)
+            epsg_list.append(epsg)
 
             """
             ## If footprint is True: Calculate footprint using GRASS.
@@ -133,7 +173,7 @@ def create_data_dict(dir_path=None, footprint=True):
 
             continue
 
-    return data_dict
+    return data_dict, epsg_list
 
 
 def add_data_to_db(data_dict):
@@ -170,40 +210,6 @@ def add_data_to_db(data_dict):
         db.session.add(m)
         db.session.add(g)
         db.session.commit()
-
-
-def _get_filename_list(path):
-    """Creates a list of files that haven't been stored in the database yet.
-    The list will be used in 'create_data_dict()' to extract all necessary
-    information from those files.
-    :param path: Full path of a raster file
-    (e.g. "D:\\data_dir\\filename.tif").
-    :return: Scenes that haven't been stored in the database yet. [List]
-    """
-    ## Search for Sentinel-1 scenes using regular expression
-    scenes = [path + "\\" + f for f in os.listdir(path) if
-              re.search(r'^S1[AB].*\.tif', f)]
-
-    if len(scenes) == 0:
-        raise ImportError("No Sentinel-1 GeoTiffs were found in the "
-                          "directory: ", path)
-
-    ## Scenes already in database
-    db_scenes = Scene.query.all()
-
-    ## Only return scenes that are not in the database yet!
-    if len(db_scenes) is 0:
-        return scenes
-
-    else:
-        scenes_new = []
-        for scene in scenes:
-            if any(scene in db.filepath for db in db_scenes):
-                continue
-            else:
-                scenes_new.append(scene)
-
-        return scenes_new
 
 
 def _get_filename_info(path):

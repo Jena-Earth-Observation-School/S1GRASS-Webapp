@@ -1,28 +1,24 @@
 from flask import render_template
-import folium
 
 from flask_app import app
 from config import Data
 from sqlite_fun import db_main
 from grass_fun import grass_main
 from flask_app.tables import *
-#from flask_app.maps import get_coords_from_first
 from flask_app.models import Scene
 
 
 @app.before_first_request
 def initialize():
 
-    try:
-        ## Create (or update) SQLite database
-        scenes, epsg = db_main()
+    ## Create (or update) SQLite database
+    scenes, epsg = db_main()
 
+    if len(scenes) > 0:
         ## Setup (or update) GRASS database
         grass_main(scenes, epsg)
-
-    except:
+    else:
         pass
-
 
 
 @app.route('/')
@@ -62,6 +58,5 @@ def meta(scene_id):
 
 @app.route('/map')
 def map():
-    start_coords = (46.9540700, 142.7360300)
-    folium_map = folium.Map(location=start_coords, zoom_start=14)
-    return folium_map._repr_html_()
+
+    return render_template('test.html')

@@ -77,7 +77,6 @@ def setup_grass(version=None, path=None, crs=None, name=None):
 
     ## User-defined settings
     gisdb = path
-    mapset = 'PERMANENT'
 
     ## Open a GRASS session and create mapset if it doesn't exist already
     with Session(gisdb=gisdb,
@@ -186,8 +185,8 @@ def export_cog(scene, crs):
     ## Run GRASS output module
     gscript.run_command("r.out.gdal", input=scene_name,
                         output=out_path, format='GTiff',
-                        createopt="TILED=YES,COMPRESS=DEFLATE",
-                        overviews=4, quiet=True)
+                        createopt="TILED=YES,COMPRESS=DEFLATE", nodata=-99.0,
+                        overviews=3, quiet=False, flags="cm")
 
     return out_path
 
@@ -203,7 +202,7 @@ def add_grass_output_to_db(info_dict):
 
     for scene in info.keys():
 
-        s = Scene.query.filter_by(filepath=scene)
+        s = Scene.query.filter_by(filepath=scene).first()
 
         go = GrassOutput(description=info[scene]['description'],
                          filepath=info[scene]['filepath'],

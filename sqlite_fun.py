@@ -4,7 +4,6 @@ from flask_app.models import Scene, Metadata, Geometry
 
 from osgeo import gdal, osr
 from osgeo.gdalconst import GA_ReadOnly
-#import json
 import os
 import re
 import shutil
@@ -43,11 +42,23 @@ def db_main():
     ## create_data_dict()
     scene_list_new = list(data_dict.keys())
 
-    ## Add extracted information to database.
-    add_data_to_db(data_dict)
+    print("----------------------------")
+    if len(scene_list_new) == 0:
+        print(f"The database is up-to-date. No new files were found in "
+              f"{Data.path}")
+        epsg = None
 
-    ## Get most common epsg from epsg_list
-    epsg = max(set(epsg_list), key=epsg_list.count)
+    else:
+        print(
+            f"{len(scene_list_new)} new files will be added to the database.")
+
+        ## Add extracted information to database.
+        add_data_to_db(data_dict)
+
+        ## Get most common epsg from epsg_list
+        epsg = max(set(epsg_list), key=epsg_list.count)
+
+    print("----------------------------")
 
     return scene_list_new, epsg
 

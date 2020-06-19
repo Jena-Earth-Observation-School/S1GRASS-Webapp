@@ -1,8 +1,8 @@
 """empty message
 
-Revision ID: bccf4cc92ef9
+Revision ID: 744b51f86047
 Revises: 
-Create Date: 2020-05-29 11:59:47.268691
+Create Date: 2020-06-19 20:39:54.315312
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = 'bccf4cc92ef9'
+revision = '744b51f86047'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -48,6 +48,17 @@ def upgrade():
     )
     op.create_index(op.f('ix_geometry_epsg'), 'geometry', ['epsg'], unique=False)
     op.create_index(op.f('ix_geometry_scene_id'), 'geometry', ['scene_id'], unique=False)
+    op.create_table('grass_output',
+    sa.Column('id', sa.Integer(), nullable=False),
+    sa.Column('scene_id', sa.Integer(), nullable=True),
+    sa.Column('description', sa.Text(), nullable=True),
+    sa.Column('filepath', sa.Text(), nullable=True),
+    sa.ForeignKeyConstraint(['scene_id'], ['scene.id'], ),
+    sa.PrimaryKeyConstraint('id')
+    )
+    op.create_index(op.f('ix_grass_output_description'), 'grass_output', ['description'], unique=False)
+    op.create_index(op.f('ix_grass_output_filepath'), 'grass_output', ['filepath'], unique=True)
+    op.create_index(op.f('ix_grass_output_scene_id'), 'grass_output', ['scene_id'], unique=False)
     op.create_table('metadata',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('scene_id', sa.Integer(), nullable=True),
@@ -70,6 +81,10 @@ def downgrade():
     op.drop_index(op.f('ix_metadata_polarisation'), table_name='metadata')
     op.drop_index(op.f('ix_metadata_acq_mode'), table_name='metadata')
     op.drop_table('metadata')
+    op.drop_index(op.f('ix_grass_output_scene_id'), table_name='grass_output')
+    op.drop_index(op.f('ix_grass_output_filepath'), table_name='grass_output')
+    op.drop_index(op.f('ix_grass_output_description'), table_name='grass_output')
+    op.drop_table('grass_output')
     op.drop_index(op.f('ix_geometry_scene_id'), table_name='geometry')
     op.drop_index(op.f('ix_geometry_epsg'), table_name='geometry')
     op.drop_table('geometry')

@@ -42,16 +42,27 @@ def grass_main(scenes, epsg):
     ## scene will then be exported as a Cloud Optimized GeoTiff and a
     ## dictionary with information to store in the database will be generated.
     start_grass_session(crs='4326')
-    info_dict = {}
+    db_dict = {}
     for scene in scenes:
         reproject_scene(scene=scene, crs_in=epsg)
         cog_path = export_cog(scene=scene, crs='4326')
 
-        info_dict[scene] = {'description': 'export_cog_4326',
-                            'filepath': cog_path}
+        db_dict[scene] = {'description': 'cog',
+                          'filepath': cog_path}
+
+    ## Add information from db_dict to the database
+    add_grass_output_to_db(db_dict)
+
+    print("------------------")
+    print("Creating aggregation:")
+    avg_path = create_avg_raster()
+
+    db_dict = {}
+    db_dict['all'] = {'description': 'aggregation',
+                      'filepath': avg_path}
 
     ## Add information from info_dict to the database
-    add_grass_output_to_db(info_dict)
+    add_grass_output_to_db(db_dict)
 
 
 def setup_grass(version=None, path=None, crs=None, name=None):
@@ -172,14 +183,14 @@ def export_cog(scene, crs):
     :return: Path to the exported file. [Str]
     """
     ## Create output directory if it doesn't exist already
-    out_dir = os.path.join(Grass.path, f'output\\cog_{crs}')
+    out_dir = os.path.join(Grass.path_out, f'4326\\cog')
     if not os.path.exists(out_dir):
         os.makedirs(out_dir)
 
     ## Define filename and full output path
     base = os.path.basename(scene)
     scene_name = base[:-len(Path(base).suffix)]
-    scene_name_new = f'{scene_name}_{crs}.tif'
+    scene_name_new = f'{scene_name}_4326.tif'
     out_path = os.path.join(out_dir, scene_name_new)
 
     ## Run GRASS output module
@@ -200,15 +211,54 @@ def add_grass_output_to_db(info_dict):
 
     info = info_dict
 
-    for scene in info.keys():
+    for key in info.keys():
+        if key == 'all':
+            go = GrassOutput(description=info[key]['description'],
+                             filepath=info[key]['filepath'],
+                             s1_scene=None)
+            db.session.add(go)
+            db.session.commit()
 
-        s = Scene.query.filter_by(filepath=scene).first()
+        else:
+            s = Scene.query.filter_by(filepath=key).first()
 
-        go = GrassOutput(description=info[scene]['description'],
-                         filepath=info[scene]['filepath'],
-                         s1_scene=s)
-        db.session.add(go)
-        db.session.commit()
+            go = GrassOutput(description=info[key]['description'],
+                             filepath=info[key]['filepath'],
+                             s1_scene=s)
+            db.session.add(go)
+            db.session.commit()
+
+
+def create_avg_raster():
+
+    ## Define output directory and name
+    out_dir = os.path.join(Grass.path_out, '4326\\aggregation')
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+    out_path = os.path.join(out_dir, 'avg_raster.tif')
+
+    ## Get all scenes currently stored in the database
+    scenes = Scene.query.all()
+
+    ## List basename of all scenes
+    scenes_base = []
+    for s in scenes:
+        base = os.path.basename(s.filepath)
+        scenes_base.append(base[:-len(Path(base).suffix)])
+
+    ## Use r.series to create aggregation of all scenes
+    gscript.run_command('r.series', input=scenes_base,
+                        output=f'avg_raster', method='average')
+
+    ## Export as COG
+    gscript.run_command("r.out.gdal", input='avg_raster',
+                        output=out_path, format='GTiff',
+                        createopt="TILED=YES,COMPRESS=DEFLATE", nodata=-99.0,
+                        overviews=3, quiet=False, flags="cm")
+
+    return out_path
+
+
 
 
 """

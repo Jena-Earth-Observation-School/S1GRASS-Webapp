@@ -25,12 +25,14 @@ def grass_main(scenes, epsg):
     ## Setup two GRASS Locations if it hasn't been done already. One with the
     ## most common original CRS and another in WGS84 for displaying in the
     ## webapp.
-    location_orig = os.path.join(Grass.path, f'GRASS_db_{epsg}')
+    location_orig = os.path.join(Grass.path, f'Grass_db_{epsg}')
     location_4326 = os.path.join(Grass.path, 'Grass_db_4326')
 
     if not os.path.isdir(location_orig):
+        print(f"Setting up 'Grass_db_{epsg}'...")
         setup_grass(crs=epsg)
     if not os.path.isdir(location_4326):
+        print("Setting up 'Grass_db_4326'...")
         setup_grass(crs='4326')
 
     ## Import scenes into GRASS Location in the original CRS
@@ -38,31 +40,36 @@ def grass_main(scenes, epsg):
     for scene in scenes:
         import_to_grass(scene)
 
+    ## Create average raster
+    avg_ras_path = create_avg_raster()
+
     ## Reproject scenes by importing into GRASS Location in WGS84. Each
     ## scene will then be exported as a Cloud Optimized GeoTiff and a
     ## dictionary with information to store in the database will be generated.
     start_grass_session(crs='4326')
-    db_dict = {}
-    for scene in scenes:
-        reproject_scene(scene=scene, crs_in=epsg)
-        cog_path = export_cog(scene=scene, crs='4326')
+    #db_dict = {}
 
-        db_dict[scene] = {'description': 'cog',
-                          'filepath': cog_path}
+    reproject_scene(scene=avg_ras_path, crs_in=epsg)
+
+    export_avg_raster(avg_ras_path)
+
+    #for scene in scenes:
+    #    reproject_scene(scene=scene, crs_in=epsg)
+        #cog_path = export_cog(scene=scene, crs='4326')
+
+        #db_dict[scene] = {'description': 'cog',
+        #                  'filepath': cog_path}
 
     ## Add information from db_dict to the database
-    add_grass_output_to_db(db_dict)
+    #add_grass_output_to_db(db_dict)
 
-    print("------------------")
-    print("Creating aggregation:")
-    avg_path = create_avg_raster()
-
-    db_dict = {}
-    db_dict['all'] = {'description': 'aggregation',
-                      'filepath': avg_path}
+    ########
+    #db_dict = {}
+    #db_dict['all'] = {'description': 'aggregation',
+    #                  'filepath': avg_path}
 
     ## Add information from info_dict to the database
-    add_grass_output_to_db(db_dict)
+    #add_grass_output_to_db(db_dict)
 
 
 def setup_grass(version=None, path=None, crs=None, name=None):
@@ -118,6 +125,7 @@ def start_grass_session(crs=None):
     gsetup.init(gisbase, gisdb, name, mapset)
     print('Current GRASS GIS 7 environment:')
     print(gscript.gisenv())
+    print("------------------")
 
 
 def import_to_grass(scene):
@@ -133,15 +141,14 @@ def import_to_grass(scene):
     ## Run GRASS Import module
     try:
         gscript.run_command("r.in.gdal", input=scene, output=scene_name,
-                            flags="e", quiet=True)
+                            flags="e", quiet=False)
     except:
         pass
 
 
 def reproject_scene(scene, crs_in=None):
     """Reproject scenes from CRS that is defined by the parameter 'crs_in' and
-    into the CRS of the GRASS session that is currently is running. Also
-    export the scene as a Cloud Optimized GeoTiff.
+    into the CRS of the GRASS session that currently is running.
     :param scene: full path e.g.
     'D:\\GEO450_data\\S1A__IW___A_20150320T182611_147_VV_grd_mli_norm_geo_db.tif'
     :param crs_in: Source CRS (e.g. '32629') [Str]
@@ -171,7 +178,8 @@ def reproject_scene(scene, crs_in=None):
     ## Import & reproject
     gscript.run_command('r.proj', input=scene_name,
                         location=f'GRASS_db_{crs_in}',
-                        mapset='PERMANENT', memory=500, quiet=True)
+                        mapset='PERMANENT', memory=500, quiet=False,
+                        overwrite=True)
 
 
 def export_cog(scene, crs):
@@ -202,12 +210,86 @@ def export_cog(scene, crs):
     return out_path
 
 
-def add_grass_output_to_db(info_dict):
+def create_avg_raster():
     """
+
+    :return:
+    """
+    print("------------------")
+    print("Creating average raster:")
+
+    ## Define output directory and name
+    out_dir = os.path.join(Grass.path_out, '4326\\aggregation')
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+    out_path = os.path.join(out_dir, 'avg_raster.tif')
+
+    ## Get all scenes currently stored in the database
+    scenes = Scene.query.all()
+
+    ## List basename of all scenes
+    scenes_base = []
+    for s in scenes:
+        base = os.path.basename(s.filepath)
+        scenes_base.append(base[:-len(Path(base).suffix)])
+
+    ## Set computational region
+    gscript.run_command('g.region', raster=scenes_base)
+
+    ## Use r.series to create aggregation of all scenes
+    gscript.run_command('r.series', input=scenes_base,
+                        output='avg_raster', method='average',
+                        overwrite=True)
+
+    ## Rescale to range from 1 to 255 (0 is going to be used for nodata)
+    #gscript.run_command('r.rescale', input='avg_raster',
+    #                    output='avg_raster_255',
+    #                    to='1,255', overwrite=True)
+
+    ## Modify color table
+    #gscript.run_command('r.colors', map='avg_raster_255',
+    #                    color='viridis', flags='e')
+
+    ## Export as COG
+    #gscript.run_command("r.out.gdal", input='avg_raster_255',
+    #                    output=out_path, format='GTiff',
+    #                    createopt="TILED=YES,COMPRESS=DEFLATE",
+    #                    overviews=4, quiet=False, nodata=0, overwrite=True)
+
+    return out_path
+
+
+def export_avg_raster(out_path):
+
+    base = os.path.basename(out_path)
+    scene_name = base[:-len(Path(base).suffix)]
+
+    gscript.run_command('g.region', raster=scene_name)
+
+    ## Rescale to range from 1 to 255 (0 is going to be used for nodata)
+    gscript.run_command('r.rescale', input='avg_raster',
+                        output='avg_raster_255',
+                        to='1,255', overwrite=True)
+
+    ## Modify color table
+    gscript.run_command('r.colors', map='avg_raster_255',
+                        color='viridis', flags='e')
+
+    gscript.run_command("r.out.gdal",
+                        input='avg_raster_255',
+                        output=out_path, format='GTiff',
+                        createopt="TILED=YES,COMPRESS=DEFLATE",
+                        overviews=4, quiet=False, nodata=0, overwrite=True)
+
+
+
+"""
+def add_grass_output_to_db(info_dict):
+    \"""
 
     :param info_dict:
     :return:
-    """
+    \"""
 
     info = info_dict
 
@@ -229,39 +311,7 @@ def add_grass_output_to_db(info_dict):
             db.session.commit()
 
 
-def create_avg_raster():
-
-    ## Define output directory and name
-    out_dir = os.path.join(Grass.path_out, '4326\\aggregation')
-    if not os.path.exists(out_dir):
-        os.makedirs(out_dir)
-    out_path = os.path.join(out_dir, 'avg_raster.tif')
-
-    ## Get all scenes currently stored in the database
-    scenes = Scene.query.all()
-
-    ## List basename of all scenes
-    scenes_base = []
-    for s in scenes:
-        base = os.path.basename(s.filepath)
-        scenes_base.append(base[:-len(Path(base).suffix)])
-
-    ## Use r.series to create aggregation of all scenes
-    gscript.run_command('r.series', input=scenes_base,
-                        output=f'avg_raster', method='average')
-
-    ## Export as COG
-    gscript.run_command("r.out.gdal", input='avg_raster',
-                        output=out_path, format='GTiff',
-                        createopt="TILED=YES,COMPRESS=DEFLATE", nodata=-99.0,
-                        overviews=3, quiet=False, flags="cm")
-
-    return out_path
-
-
-
-
-"""
+#######
 import subprocess
 from osgeo import osr
 

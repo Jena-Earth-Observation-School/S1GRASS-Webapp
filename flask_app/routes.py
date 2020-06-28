@@ -1,6 +1,8 @@
-from flask import render_template
+from flask import render_template, send_from_directory
+import os
 
 from flask_app import app
+from config import Grass
 from sqlite_fun import db_main
 from grass_fun import grass_main
 from flask_app.tables import *
@@ -54,8 +56,14 @@ def meta(scene_id):
     return render_template('table.html', table=table, title=title)
 
 
+@app.route('/serve/<path:filename>')
+def serve_file(filename):
+    return send_from_directory(os.path.join(Grass.path_out, '4326'),
+                               filename,
+                               as_attachment=True)
+
+
 @app.route('/map')
 def map():
-
     return render_template('test.html')
     #return map_._repr_html_()

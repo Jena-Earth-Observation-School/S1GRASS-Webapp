@@ -8,6 +8,7 @@ from grass_fun import grass_main
 from flask_app.tables import *
 from flask_app.models import Scene
 
+
 @app.before_first_request
 def initialize():
 
@@ -53,17 +54,24 @@ def meta(scene_id):
     ## Title for the html page
     title = "Metadata for scene #" + scene_id
 
-    return render_template('table.html', table=table, title=title)
+    ##
+    path = os.path.dirname(s.filepath)
+    filename = os.path.basename(s.filepath)
+
+    return render_template('table_meta.html', table=table, title=title,
+                           path=path, filename=filename)
 
 
-@app.route('/serve/<path:filename>')
-def serve_file(filename):
-    return send_from_directory(os.path.join(Grass.path_out, '4326'),
-                               filename,
+@app.route('/serve/<path:path>/<path:filename>')
+def serve_file(path, filename):
+    return send_from_directory(path, filename,
                                as_attachment=True)
 
 
 @app.route('/map')
-def map():
-    return render_template('test.html')
-    #return map_._repr_html_()
+def load_map():
+
+    path = os.path.join(Grass.path_out, '4326\\aggregation')
+    filename = 'avg_raster.tif'
+
+    return render_template('map.html', path=path, filename=filename)

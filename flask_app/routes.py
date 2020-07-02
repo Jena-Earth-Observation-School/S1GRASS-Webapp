@@ -51,27 +51,30 @@ def meta(scene_id):
     ## Create table (html)
     table = create_meta_table(s)
 
-    ## Title for the html page
+    ## Dynamic title for the html page
     title = "Metadata for scene #" + scene_id
 
-    ##
-    path = os.path.dirname(s.filepath)
-    filename = os.path.basename(s.filepath)
+    ## Get filepath to render the file on a map
+    filepath = s.filepath
 
     return render_template('table_meta.html', table=table, title=title,
-                           path=path, filename=filename)
-
-
-@app.route('/serve/<path:path>/<path:filename>')
-def serve_file(path, filename):
-    return send_from_directory(path, filename,
-                               as_attachment=True)
+                           filepath=filepath)
 
 
 @app.route('/map')
-def load_map():
+def main_map():
 
-    path = os.path.join(Grass.path_out, '4326\\aggregation')
-    filename = 'avg_raster.tif'
+    filepath = os.path.join(Grass.path_out,
+                            '4326\\aggregation\\avg_raster.tif')
 
-    return render_template('map.html', path=path, filename=filename)
+    return render_template('map.html', filepath=filepath)
+
+
+@app.route('/serve//<path:filepath>')
+def serve_file(filepath):
+
+    path = os.path.dirname(filepath)
+    filename = os.path.basename(filepath)
+
+    return send_from_directory(path, filename,
+                               as_attachment=True)

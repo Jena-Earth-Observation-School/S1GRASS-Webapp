@@ -35,9 +35,8 @@ L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {
 }).addTo(map);
 
 // Get file url
-var filename = "{{filename}}"
-var path = "{{path}}"
-var file = "{{ url_for('serve_file', path=path, filename=filename) }}";
+var filepath = "{{filepath}}"
+var file = "{{ url_for('serve_file', filepath=filepath) }}";
 console.log("file_url:", file)
 
 // Create GeoRasterLayer and add to map

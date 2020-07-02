@@ -1,10 +1,10 @@
 import os
 
-###### CHANGE DATA DIRECTORY HERE ######
+######## CHANGE DATA DIRECTORY HERE (No need to change anything else) #########
 
 data_dir = "D:/GEO450_data"
 
-########################################
+###############################################################################
 
 ## Convert to normalized path (just in case) and print error message if it
 ## doesn't exist

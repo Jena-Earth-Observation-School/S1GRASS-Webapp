@@ -1,5 +1,4 @@
 from flask import render_template, send_from_directory
-import os
 
 from flask_app import app
 from config import Grass
@@ -11,12 +10,21 @@ from flask_app.models import Scene
 
 @app.before_first_request
 def initialize():
+    """This will trigger db_main() and grass_main() (for more details see
+    function descriptions in sqlite_fun.py and grass_fun.py) when the
+    webapp is opened to either create the SQLite database and setup GRASS for
+    the first time, which might take a few minutes (depending on number and
+    size of valid scenes) OR update both with new scenes OR to do nothing,
+    because setup has already been done and there are no new scenes in the
+    directory.
+    """
 
     ## Create (or update) SQLite database
     scenes, epsg = db_main()
 
+    ## Only execute grass_main() if new scenes were found. Scenes will be
+    ## imported to the GRASS database and avg_raster.tif will be recalculated.
     if len(scenes) > 0:
-        ## Setup (or update) GRASS database
         grass_main(scenes, epsg)
     else:
         pass
@@ -64,8 +72,7 @@ def meta(scene_id):
 @app.route('/map')
 def main_map():
 
-    filepath = os.path.join(Grass.path_out,
-                            '4326\\aggregation\\avg_raster.tif')
+    filepath = os.path.join(Grass.path_out, 'avg_raster.tif')
 
     return render_template('map.html', filepath=filepath)
 

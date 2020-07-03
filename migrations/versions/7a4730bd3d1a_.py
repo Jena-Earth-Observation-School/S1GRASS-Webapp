@@ -1,8 +1,8 @@
 """empty message
 
-Revision ID: 744b51f86047
+Revision ID: 7a4730bd3d1a
 Revises: 
-Create Date: 2020-06-19 20:39:54.315312
+Create Date: 2020-07-03 12:45:47.622241
 
 """
 from alembic import op
@@ -10,7 +10,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = '744b51f86047'
+revision = '7a4730bd3d1a'
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -42,23 +42,11 @@ def upgrade():
     sa.Column('bounds_north', sa.Float(), nullable=True),
     sa.Column('bounds_west', sa.Float(), nullable=True),
     sa.Column('bounds_east', sa.Float(), nullable=True),
-    sa.Column('footprint', sa.Text(), nullable=True),
     sa.ForeignKeyConstraint(['scene_id'], ['scene.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_geometry_epsg'), 'geometry', ['epsg'], unique=False)
     op.create_index(op.f('ix_geometry_scene_id'), 'geometry', ['scene_id'], unique=False)
-    op.create_table('grass_output',
-    sa.Column('id', sa.Integer(), nullable=False),
-    sa.Column('scene_id', sa.Integer(), nullable=True),
-    sa.Column('description', sa.Text(), nullable=True),
-    sa.Column('filepath', sa.Text(), nullable=True),
-    sa.ForeignKeyConstraint(['scene_id'], ['scene.id'], ),
-    sa.PrimaryKeyConstraint('id')
-    )
-    op.create_index(op.f('ix_grass_output_description'), 'grass_output', ['description'], unique=False)
-    op.create_index(op.f('ix_grass_output_filepath'), 'grass_output', ['filepath'], unique=True)
-    op.create_index(op.f('ix_grass_output_scene_id'), 'grass_output', ['scene_id'], unique=False)
     op.create_table('metadata',
     sa.Column('id', sa.Integer(), nullable=False),
     sa.Column('scene_id', sa.Integer(), nullable=True),
@@ -81,10 +69,6 @@ def downgrade():
     op.drop_index(op.f('ix_metadata_polarisation'), table_name='metadata')
     op.drop_index(op.f('ix_metadata_acq_mode'), table_name='metadata')
     op.drop_table('metadata')
-    op.drop_index(op.f('ix_grass_output_scene_id'), table_name='grass_output')
-    op.drop_index(op.f('ix_grass_output_filepath'), table_name='grass_output')
-    op.drop_index(op.f('ix_grass_output_description'), table_name='grass_output')
-    op.drop_table('grass_output')
     op.drop_index(op.f('ix_geometry_scene_id'), table_name='geometry')
     op.drop_index(op.f('ix_geometry_epsg'), table_name='geometry')
     op.drop_table('geometry')

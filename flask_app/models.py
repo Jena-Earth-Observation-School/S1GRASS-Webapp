@@ -10,8 +10,8 @@ class Scene(db.Model):
     time_added = db.Column(db.DateTime, index=True, default=datetime.utcnow)
     meta = db.relationship('Metadata', backref='s1_scene', lazy='dynamic')
     geo = db.relationship('Geometry', backref='s1_scene', lazy='dynamic')
-    grass_out = db.relationship('GrassOutput', backref='s1_scene',
-                                lazy='dynamic')
+    # grass_out = db.relationship('GrassOutput', backref='s1_scene',
+    #                            lazy='dynamic')
 
     def __repr__(self):
         return '<Scene {}>'.format(self.filepath)
@@ -41,12 +41,12 @@ class Geometry(db.Model):
     bounds_north = db.Column(db.Float)
     bounds_west = db.Column(db.Float)
     bounds_east = db.Column(db.Float)
-    footprint = db.Column(db.Text)
+    # footprint = db.Column(db.Text)
 
     def __repr__(self):
         return '<Geometry of scene {}>'.format(self.scene_id)
 
-
+"""
 class GrassOutput(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     scene_id = db.Column(db.Integer, db.ForeignKey('scene.id'), index=True)
@@ -55,4 +55,4 @@ class GrassOutput(db.Model):
 
     def __repr__(self):
         return '<GRASS output of scene {}>'.format(self.scene_id)
-
+"""

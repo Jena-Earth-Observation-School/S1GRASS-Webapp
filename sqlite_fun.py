@@ -12,12 +12,12 @@ gdal.UseExceptions()
 
 
 def db_main():
-    """This workflow first uses flask-migrate to initialize the database
+    """This workflow first uses flask-migrate to initialize the SQLite database
     scheme and sets up the database. It will then search the provided data
     directory for Sentinel-1 GeoTiffs. Information will be extracted from all
     scenes that haven't been imported to the database yet and added to the
     database. The most common CRS in the dataset will also be determined,
-    which is used to set up GRASS.
+    which is used to set up GRASS in grass_main() (see grass_fun.py).
     """
 
     ## Initialize database if it hasn't been done already.
@@ -42,23 +42,21 @@ def db_main():
     ## create_data_dict()
     scene_list_new = list(data_dict.keys())
 
-    print("----------------------------")
     if len(scene_list_new) == 0:
-        print(f"The database is up-to-date. No new files were found in "
+        print(f"~~ The database is up-to-date. No new files were found in "
               f"{Data.path}")
         epsg = None
 
     else:
         print(
-            f"{len(scene_list_new)} new files will be added to the database.")
+            f"~~ {len(scene_list_new)} new files will be added to the "
+            f"database.")
 
         ## Add extracted information to database.
         add_data_to_db(data_dict)
 
         ## Get most common epsg from epsg_list
         epsg = max(set(epsg_list), key=epsg_list.count)
-
-    print("----------------------------")
 
     return scene_list_new, epsg
 
@@ -88,7 +86,7 @@ def create_filename_list(path=None):
     db_scenes = Scene.query.all()
 
     ## Only return scenes that are not in the database yet!
-    if len(db_scenes) is 0:
+    if len(db_scenes) == 0:
         return scenes
 
     else:
@@ -102,13 +100,11 @@ def create_filename_list(path=None):
         return scenes_new
 
 
-def create_data_dict(scenes=None, footprint=True):
+def create_data_dict(scenes=None):
     """Creates a dictionary with information about each valid Sentinel-1
     .tif (!) file in the data directory. The extracted information is then
     used to fill the SQLite database.
     :param scenes: List of scenes created with get_filename_list().
-    :param footprint: Calculates footprint using GRASS if set to
-    True. (DEACTIVATED)
     :return data_dict: Extracted information [dict]
     """
 
@@ -133,23 +129,6 @@ def create_data_dict(scenes=None, footprint=True):
             epsg = _get_epsg(scene)
             epsg_list.append(epsg)
 
-            """
-            ## If footprint is True: Calculate footprint using GRASS.
-            if footprint:
-                foot_path = get_footprint(scene)
-
-                ## Reproject into EPSG 4326
-                new_foot_path = reproject_geojson(foot_path, epsg)
-
-                ## Load footprint and store as string in the db
-                with open(new_foot_path) as foot:
-                    f_json = json.load(foot)
-                    f_string = json.dumps(f_json)
-            else:
-                f_string = None
-            """
-            f_string = None
-
             data_dict[scene] = {"sensor": file_info[0],
                                 "orbit": file_info[2],
                                 "date": file_info[4],
@@ -165,8 +144,7 @@ def create_data_dict(scenes=None, footprint=True):
                                 "resolution": int(bounds[4]),
                                 "nodata_val": int(band.GetNoDataValue()),
                                 "band_min": band_min,
-                                "band_max": band_max,
-                                "footprint": f_string}
+                                "band_max": band_max}
 
         except RuntimeError:
             print(os.path.basename(scene))
@@ -218,7 +196,6 @@ def add_data_to_db(info_dict):
                      bounds_north=info[scene]['bounds_north'],
                      bounds_west=info[scene]['bounds_west'],
                      bounds_east=info[scene]['bounds_east'],
-                     footprint=info[scene]['footprint'],
                      s1_scene=s)
 
         db.session.add(s)
@@ -248,7 +225,8 @@ def _get_filename_info(path):
                          "information about the orbit (ascending or "
                          "descending). \n Please check if your files are "
                          "named according to the naming scheme of PyroSAR: \n"
-                         "https://pyrosar.readthedocs.io/en/latest/general/filenaming.html")
+                         "https://pyrosar.readthedocs.io/en/latest/general/"
+                         "filenaming.html")
     if "_VV_" in filename:
         pol = "VV"
     elif "_VH_" in filename:

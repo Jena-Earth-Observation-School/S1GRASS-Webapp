@@ -59,8 +59,18 @@ fetch(file)
   });
 });
 
-</script>
+map.on('click',
+    function(e){
+        var coord = e.latlng;
+        var lat = coord.lat;
+        var lng = coord.lng;
 
+        console.log("coord_test:", coord);
+
+});
+
+</script>
 </body>
+
 
 {% endblock %}

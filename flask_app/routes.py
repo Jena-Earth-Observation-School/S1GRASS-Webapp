@@ -3,9 +3,10 @@ from flask import render_template, send_from_directory
 from flask_app import app
 from config import Grass
 from sqlite_fun import db_main
-from grass_fun import grass_main
+from grass_fun import grass_main, start_grass_session, create_plot
 from flask_app.tables import *
 from flask_app.models import Scene
+import re
 
 
 @app.before_first_request
@@ -27,7 +28,11 @@ def initialize():
     if len(scenes) > 0:
         grass_main(scenes, epsg)
     else:
-        pass
+        ## Search for already existing GRASS project and start session
+        l_dir = os.listdir(Grass.path)
+        r = re.compile("GRASS.*")
+        grass_project = list(filter(r.match, l_dir))[0]
+        start_grass_session(name=grass_project)
 
 
 @app.route('/')
@@ -62,7 +67,7 @@ def meta(scene_id):
     ## Dynamic title for the html page
     title = "Metadata for scene #" + scene_id
 
-    ## Get filepath to render the file on a map
+    ## Get filepath to render raster on map
     filepath = s.filepath
 
     return render_template('table_meta.html', table=table, title=title,
@@ -77,7 +82,7 @@ def main_map():
     return render_template('map.html', filepath=filepath)
 
 
-@app.route('/serve//<path:filepath>')
+@app.route('/serve/<path:filepath>')
 def serve_file(filepath):
 
     path = os.path.dirname(filepath)
@@ -85,3 +90,11 @@ def serve_file(filepath):
 
     return send_from_directory(path, filename,
                                as_attachment=True)
+
+
+@app.route('/plot/<string:lat>/<string:lng>/<string:proj>')
+def plot(lat, lng, proj):
+
+    html_plot = create_plot(latitude=lat, longitude=lng, projection=proj)
+
+    return html_plot

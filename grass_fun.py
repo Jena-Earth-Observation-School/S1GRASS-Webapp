@@ -1,13 +1,19 @@
 from config import Grass
-from flask_app.models import Scene
+from flask_app.models import Scene, Metadata
 
-from progress.bar import Bar
-import os
-import sys
-from pathlib import Path
 from grass_session import Session, get_grass_gisbase
 import grass.script as gscript
 import grass.script.setup as gsetup
+from progress.bar import Bar
+import os
+import sys
+import numpy as np
+from pathlib import Path
+from osgeo import ogr
+from osgeo import osr
+from bokeh.plotting import figure
+from bokeh.resources import CDN
+from bokeh.embed import file_html
 
 
 def grass_main(scenes, epsg):
@@ -18,6 +24,7 @@ def grass_main(scenes, epsg):
     started and each scene in the list provided by the parameter 'scenes' will
     be imported and an average raster will be calculated and exported to
     display in the main map of the webapp.
+
     :param scenes: List of scenes that was created while running db_main().
     Each scene is listed as the full path.
     :param epsg: Most common CRS in the dataset. Also created while running
@@ -39,6 +46,7 @@ def grass_main(scenes, epsg):
 
 def setup_grass(version=None, path=None, crs=None, name=None):
     """Sets up a GRASS project.
+
     :param version: GRASS version (e.g. 'grass78') [str]
     :param path: Path where Grass should be set up. Default is a
     subdirectory of the provided data directory. [str]
@@ -46,6 +54,7 @@ def setup_grass(version=None, path=None, crs=None, name=None):
     workflow (see grass_main()) uses the most common CRS of all files in a
     dataset. [str]
     :param name: Name of the GRASS project. Default is 'GRASS_db_{crs}'. [str]
+
     :returns: New GRASS project that can be started using
     start_grass_session().
     """
@@ -82,11 +91,12 @@ def setup_grass(version=None, path=None, crs=None, name=None):
     return print(f"~~ The GRASS project '{name}' was successfully created.")
 
 
-def start_grass_session(crs=None, name=None):
+def start_grass_session(crs=None, name=None, quiet=False):
     """Starts a GRASS session, provided it has been setup before (see
     setup_grass()). This will only search for GRASS projects located in
     Grass.path, which by default is a subdirectory of the provided data
     directory!
+
     :param crs: EPSG code the GRASS project was set up in (e.g.
     '32629'). This parameter is used to identify automatically generated
     GRASS projects that contain the EPSG code in their name. For other
@@ -94,10 +104,12 @@ def start_grass_session(crs=None, name=None):
     :param name: If the GRASS project cannot be identified with the EPSG
     code it was set up in, then the name of the project can be passed with
     this parameter instead (e.g. 'my-awesome-grass-project') [str]
+    :param quiet:
+
     :returns: GRASS session
     """
-    ## (There's probably a better way to do the following, but I guess it
-    ## works...)
+    ## (There's probably a better way to do the following if-statements,
+    ## but I guess it works...)
     if crs is None and name is None:
         raise ValueError("Please provide either a valid EPSG code using the "
                          "parameter 'crs' or the name of a GRASS project by "
@@ -128,15 +140,18 @@ def start_grass_session(crs=None, name=None):
     mapset = 'PERMANENT'
 
     gsetup.init(gisbase, gisdb, project_name, mapset)
-    print(f"~~ Current GRASS GIS environment: \n {gscript.gisenv()}")
+    if not quiet:
+        print(f"~~ Current GRASS GIS environment: \n {gscript.gisenv()}")
 
 
 def import_to_grass(scenes):
     """Import of multiple scenes into the currently active GRASS session.
+
     :param scenes: List of scenes that should be imported. Each entry in
     the list is a full path (e.g.
     'D:\\GEO450_data\\S1A__IW___A_20150320T182611_147_VV_grd_mli_norm_geo_db
     .tif')
+
     :returns: Newly imported scenes in the GRASS session.
     """
 
@@ -163,7 +178,8 @@ def create_avg_raster():
     raster of all scenes in the database is created to display on the main map
     of the webapp. This file will be updated if new scenes have been added
     to the database.
-    :return: 'avg_raster.tif' as a Cloud-Optimized-Geotiff
+
+    :returns: 'avg_raster.tif' as a Cloud-Optimized-Geotiff
     """
     print("~~ Creating average raster:")
 
@@ -206,10 +222,12 @@ def create_avg_raster():
 
 def export_cog(scene):
     """Export a scene as a Cloud Optimized GeoTiff.
+
     :param scene: full path e.g.
     'D:\\GEO450_data\\S1A__IW___A_20150320T182611_
     147_VV_grd_mli_norm_geo_db.tif' [str]
-    :return: Path to the exported file. [str]
+
+    :return out_path: Path to the exported file. [str]
     """
     ## Create output directory if it doesn't exist already
     out_dir = Grass.path_out
@@ -234,9 +252,125 @@ def export_cog(scene):
     return out_path
 
 
+def transform_coord(lat, lng, proj):
+    """Transforms leaflet map coordinates from WGS84/EPSG:4326 into the
+    the projection of the GRASS project.
+
+    :param lat: Latitude coordinate. [str or float]
+    :param lng: Longitude coordinate. [str or float]
+    :param proj: Projection / EPSG code to transform into. [str or int]
+
+    :return coord_out: Transformed coordinates (x, y). [str]
+    """
+
+    source = osr.SpatialReference()
+    source.ImportFromEPSG(4326)
+
+    target = osr.SpatialReference()
+    if type(proj) is str:
+        target.ImportFromEPSG(int(proj))
+    else:
+        target.ImportFromEPSG(proj)
+
+    transform = osr.CoordinateTransformation(source, target)
+
+    point = ogr.CreateGeometryFromWkt(f"POINT ({lat} {lng})")
+    point.Transform(transform)
+
+    x_coord = point.GetX()
+    y_coord = point.GetY()
+
+    coord_out = f"{x_coord},{y_coord}"
+
+    return coord_out
+
+
+def get_timeseries(coordinate):
+    """Uses the r.what module in GRASS GIS to extract a timeseries for a
+    given coordinate.
+
+    :param coordinate: Output of transform_coord(). Location to generate
+    timeseries for. Must be in the same projection as the GRASS project. [str]
+
+    :return values_list: List of extracted values.
+    :return dates_list: List of dates associated with values_list.
+    """
+    ## Get all scenes in database
+    all_scenes = Scene.query.all()
+
+    ## List basename of all scenes
+    scenes = []
+    for s in all_scenes:
+        base = os.path.basename(s.filepath)
+        scenes.append(base[:-len(Path(base).suffix)])
+
+    ## Set computational region
+    gscript.run_command('g.region', raster=scenes)
+
+    ## Query all scenes using r.what
+    values = gscript.parse_command('r.what', map=scenes,
+                                   coordinates=coordinate,
+                                   null_value='nan',
+                                   separator='comma')
+    ## Format output
+    values = list(values)[0]
+    values = values.split(",")
+    values_list = values[3:]
+    values_list = [np.nan if x == 'nan' else float(x) for x in values_list]
+
+    ## Get list of dates from database for the x-axis
+    dates_list = [date for (date,) in Scene.query.with_entities(
+        Scene.date).all()]
+
+    return values_list, dates_list
+
+
+def create_plot(latitude, longitude, projection):
+    """Uses get_timeseries() to extract a timeseries for a given location by
+    querying all raster layers currently available in the database / GRASS
+    project. Limits of the y-axis are always set to the overall minimum and
+    maximum values of all available rasters to make the generated plots of a
+    given session comparable. The plot is automatically exported in
+    html, so it can directly be embedded in the webapp.
+
+    :param latitude: Latitude coordinate. [str or float]
+    :param longitude: Longitude coordinate. [str or float]
+    :param projection: Projection / EPSG code of the GRASS project. [str or
+    int]
+
+    :returns: Plot in html format.
+    """
+
+    ## Transform coordinates
+    coord = transform_coord(lat=latitude, lng=longitude, proj=projection)
+
+    ## Do GRASS stuff
+    #start_grass_session(crs=projection, quiet=True)
+    y_values, x_dates = get_timeseries(coord)
+
+    ## Set y min and max based on all scenes in database
+    y_min = min(Metadata.query.with_entities(Metadata.band_min).all()).band_min
+    y_max = max(Metadata.query.with_entities(Metadata.band_max).all()).band_max
+
+    ## Create plot
+    p = figure(x_axis_label='Time', y_axis_label='Backscatter (dB)',
+               x_axis_type='datetime', y_range=(y_min, y_max))
+
+    p.line(x_dates, y_values, line_width=2, line_color='black')
+
+    p.circle(x_dates, y_values, fill_color='black', line_color='black', size=5,
+             legend_label=f"Time series for location: "
+                          f"{round(float(latitude), 2)},"
+                          f"{round(float(longitude), 2)}")
+
+    html = file_html(p, CDN)
+
+    return html
+
+
 """
 ##################### PROJECT GRAVEYARD ######################################
-(some of this might be useful in the future...?)
+(some of this might be useful again in the future...?)
 
 ##################################
 ## REPROJECTING scenes by using two Mapsets and importing from one to 

@@ -8,23 +8,25 @@
           integrity="sha512-xwE/Az9zrjBIphAcBb3F6JVqxf46+CDLwfLMHloNu6KEQCAWi6HcDUbeOfBIptF7tcCzusKFjFw2yuvEpDL9wQ=="
           crossorigin=""/>
     <style>
-    #map {
-    display: inline-block;
-    width: 600px;
-    height: 450px;
+
+    #wrapper {
+    display: flex;
     }
 
-    #plot {
-    display: inline-block;
-    width: 600px;
-    height: 350px;
+    #map {
+    width: 650px;
+    height: 500px;
+    float: left;
+    }
+
+    #plot {       // Bokeh plot size is defined in grass_fun.py where the plot is created
+    float: left;
     }
 
     </style>
 </head>
 
 <body>
-
 <div id="wrapper">
     <div id="map"></div>
     <div id="plot"></div>
@@ -36,7 +38,6 @@
 <script src="https://unpkg.com/georaster"></script>
 <script src="https://unpkg.com/proj4"></script>
 <script src="https://unpkg.com/georaster-layer-for-leaflet/georaster-layer-for-leaflet.browserify.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.6.2/proj4.js"></script>
 
 <script type="text/javascript">
 
@@ -48,11 +49,12 @@ L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {
   attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
 }).addTo(map);
 
-// Get avg_raster.tif
+// Use  avg_raster.tif
 var filepath = "{{filepath}}"
 var file = "{{url_for('serve_file', filepath=filepath)}}";
 console.log("file_url:", file)
 
+// Define global variable to store projection in
 var ras_proj;
 
 // Create GeoRasterLayer and add to map
@@ -68,6 +70,7 @@ fetch(file)
           resolution: 256
       });
 
+      // Get georaster projection and store in global variable ('window.' is used to access global variables)
       window.ras_proj = georaster.projection;
 
       // Add layer and fit to layer extent
@@ -77,19 +80,31 @@ fetch(file)
   });
 });
 
+// Define empty variable for pin
+var pin = {};
+
 map.on('click',
     function(e){
+        // Define coordinates where map was clicked
         var coord = e.latlng;
         var latitude = coord.lat;
         var longitude = coord.lng;
 
-        // Jinja2's 'url_for' doesn't accept js variables, so the easiest fix is to just built the url client-side
+        // Remove previous pin
+        if (pin != undefined) {
+              map.removeLayer(pin);
+        };
+
+        // Add new pin
+        pin = L.marker([latitude,longitude]).addTo(map);
+
+        // Update bokeh plot
+        // Jinja2's 'url_for' doesn't accept JS variables, so the easiest fix is to just build the url client-side.
         // For more information see: https://stackoverflow.com/a/36144071/9764999
+        // Sending the projection back as well to know which CRS the coordinates need to be transformed into. It's also
+        // possible to get the projection from the GRASS project itself, but this way seemed a bit more straightforward.
         var url = ["/plot", latitude, longitude, ras_proj].join("/");
         $('#plot').load(url);
-
-        //console.log("Coordinate:", coord);
-        //console.log("URL:", url);
 
 });
 

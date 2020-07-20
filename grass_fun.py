@@ -344,8 +344,7 @@ def create_plot(latitude, longitude, projection):
     ## Transform coordinates
     coord = transform_coord(lat=latitude, lng=longitude, proj=projection)
 
-    ## Do GRASS stuff
-    #start_grass_session(crs=projection, quiet=True)
+    ## Extract values from all available scenes
     y_values, x_dates = get_timeseries(coord)
 
     ## Set y min and max based on all scenes in database
@@ -353,15 +352,19 @@ def create_plot(latitude, longitude, projection):
     y_max = max(Metadata.query.with_entities(Metadata.band_max).all()).band_max
 
     ## Create plot
-    p = figure(x_axis_label='Time', y_axis_label='Backscatter (dB)',
-               x_axis_type='datetime', y_range=(y_min, y_max))
+    p = figure(plot_width=550, plot_height=500,
+               x_axis_label='Time',
+               y_axis_label='Backscatter (dB)',
+               x_axis_type='datetime',
+               y_range=(y_min, y_max),
+               title=f"Location: "
+                       f"{round(float(latitude), 2)}, "
+                       f"{round(float(longitude), 2)}    -    "
+                       f"Scenes: {sum(abs(i) > 0 for i in y_values)}/"
+                       f"{len(y_values)}")
 
     p.line(x_dates, y_values, line_width=2, line_color='black')
-
-    p.circle(x_dates, y_values, fill_color='black', line_color='black', size=5,
-             legend_label=f"Time series for location: "
-                          f"{round(float(latitude), 2)},"
-                          f"{round(float(longitude), 2)}")
+    p.dot(x_dates, y_values, size=20, color='black')
 
     html = file_html(p, CDN)
 

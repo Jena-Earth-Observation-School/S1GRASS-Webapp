@@ -1,12 +1,14 @@
-from flask import render_template, send_from_directory
-
 from flask_app import app
 from config import Grass
 from sqlite_fun import db_main
 from grass_fun import grass_main, start_grass_session, create_plot
-from flask_app.tables import *
+from flask_app.tables import create_overview_table, create_meta_table
 from flask_app.models import Scene
+
+from flask import render_template, send_from_directory
 import re
+import os
+from datetime import datetime
 
 
 @app.before_first_request
@@ -38,7 +40,17 @@ def initialize():
 @app.route('/')
 @app.route('/home')
 def index():
-    return render_template('home.html')
+
+    all_scenes = Scene.query.all()
+
+    date_min = all_scenes[0].date
+    date_max = all_scenes[len(all_scenes) - 1].date
+
+    date_min = date_min.strftime("%Y-%m-%d")
+    date_max = date_max.strftime("%Y-%m-%d")
+
+    return render_template('home.html', n_scenes=len(all_scenes),
+                           date_min=date_min, date_max=date_max)
 
 
 @app.route('/overview')

@@ -18,8 +18,12 @@
           crossorigin=""/>
     <style>
     #map {
+    position: absolute;
     width: 960px;
     height: 500px;
+    left: 0;
+	right: 0;
+	margin: auto;
     }
     </style>
 </head>
@@ -36,7 +40,7 @@
 <script>
 
 // Initialize map and set view
-var map = L.map('map').setView([37, -6.4], 10);
+var map = L.map('map', {scrollWheelZoom: false}).setView([37, -6.4], 10);
 
 // Load OSM basemap
 L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {

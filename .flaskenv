@@ -1,1 +1,1 @@
-FLASK_APP=s1_webapp.py
+FLASK_APP=s1grass_webapp.py

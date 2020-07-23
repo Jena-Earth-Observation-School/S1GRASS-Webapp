@@ -2,15 +2,29 @@
 
 {% block app_content %}
 
-<p>
-    <h6>Number of scenes currently stored in the database:</h6>
-    <h6>{{n_scenes}}</h6>
-</p>
+<style>
+#text {
+margin-top:15px;
+margin-left: 15px;
+}
+</style>
 
-<p>
-    <h6>Temporal extent:</h6>
-    <h6>{{date_min}}  -  {{date_max}}</h6>
-</p>
+<div id="text">
+
+    <p>
+        <h4>Welcome!</h4>
+    </p>
+
+    <p>
+        <h5><b>{{ n_scenes }}</b> scenes are currently stored in the database.</h5>
+    </p>
+
+    <p>
+        <h5><b>{{ date_min }}</b> is the acquisition date of the first and <b>{{ date_max }}</b> of the last scene.</h5>
+    </p>
+
+
+</div>
 
 
 {% endblock %}

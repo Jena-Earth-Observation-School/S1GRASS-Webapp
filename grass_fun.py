@@ -363,8 +363,8 @@ def create_plot(latitude, longitude, projection):
                        f"Scenes: {sum(abs(i) > 0 for i in y_values)}/"
                        f"{len(y_values)}")
 
-    p.line(x_dates, y_values, line_width=2, line_color='black')
-    p.dot(x_dates, y_values, size=20, color='black')
+    p.line(x_dates, y_values, line_width=2)
+    p.dot(x_dates, y_values, size=15, color='darkblue')
 
     html = file_html(p, CDN)
 

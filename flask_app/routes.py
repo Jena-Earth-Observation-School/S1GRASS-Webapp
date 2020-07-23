@@ -8,7 +8,6 @@ from flask_app.models import Scene
 from flask import render_template, send_from_directory
 import re
 import os
-from datetime import datetime
 
 
 @app.before_first_request
@@ -59,10 +58,7 @@ def overview():
     ## Create table (html)
     table = create_overview_table()
 
-    ## Title for the html page
-    title = "Scenes currently stored in the database:"
-
-    return render_template('table.html', table=table, title=title)
+    return render_template('table.html', table=table)
 
 
 @app.route('/meta/<scene_id>')

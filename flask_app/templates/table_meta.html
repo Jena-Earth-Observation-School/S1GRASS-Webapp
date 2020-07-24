@@ -7,23 +7,24 @@
           href="https://unpkg.com/leaflet@1.6.0/dist/leaflet.css"
           integrity="sha512-xwE/Az9zrjBIphAcBb3F6JVqxf46+CDLwfLMHloNu6KEQCAWi6HcDUbeOfBIptF7tcCzusKFjFw2yuvEpDL9wQ=="
           crossorigin=""/>
+
     <style>
     #title {
-    margin-left: 15px;
+        margin-left: 15px;
     }
 
     #table {
-    margin-left: 15px;
-    margin-right: 15px;
+        margin-left: 15px;
+        margin-right: 15px;
     }
 
     #map {
-    position: absolute;
-    width: 960px;
-    height: 500px;
-    left: 0;
-	right: 0;
-	margin: auto;
+        position: absolute;
+        width: 960px;
+        height: 500px;
+        left: 0;
+	    right: 0;
+	    margin: auto;
     }
     </style>
 </head>
@@ -56,7 +57,7 @@ var map = L.map('map', {scrollWheelZoom: false}).setView([37, -6.4], 10);
 
 // Load OSM basemap
 L.tileLayer('http://{s}.tile.osm.org/{z}/{x}/{y}.png', {
-  attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
+    attribution: '&copy; <a href="http://osm.org/copyright">OpenStreetMap</a> contributors'
 }).addTo(map);
 
 // Get file url
@@ -69,17 +70,17 @@ fetch(file)
   .then(response => response.arrayBuffer())
   .then(arrayBuffer => {
     parseGeoraster(arrayBuffer).then(georaster => {
-      console.log("georaster:", georaster);
+        console.log("georaster:", georaster);
 
-      var layer = new GeoRasterLayer({
-          georaster: georaster,
-          opacity: 1.0,
-          resolution: 128
-      });
+        var layer = new GeoRasterLayer({
+            georaster: georaster,
+            opacity: 1.0,
+            resolution: 128
+        });
 
-      layer.addTo(map);
-
-      map.fitBounds(layer.getBounds());
+        // Add layer and fit to layer extent
+        layer.addTo(map);
+        map.fitBounds(layer.getBounds());
 
   });
 });

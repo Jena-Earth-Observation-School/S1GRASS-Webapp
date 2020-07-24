@@ -14,11 +14,13 @@ import os
 def initialize():
     """This will trigger db_main() and grass_main() (for more details see
     function descriptions in sqlite_fun.py and grass_fun.py) when the
-    webapp is opened to either create the SQLite database and setup GRASS for
-    the first time, which might take a few minutes (depending on number and
-    size of valid scenes) OR update both with new scenes OR to do nothing,
-    because setup has already been done and there are no new scenes in the
-    directory.
+    webapp is opened to either:
+    - create the SQLite database and setup GRASS for the first time,
+    which might take a few minutes (depending on number and size of valid
+    scenes)
+    - OR update both with new scenes
+    - OR do nothing, because setup has already been done and there are no new
+    scenes in the directory.
     """
 
     ## Create (or update) SQLite database
@@ -30,6 +32,9 @@ def initialize():
         grass_main(scenes, epsg)
     else:
         ## Search for already existing GRASS project and start session
+        ## (Probably best to change this? This assumes that only one GRASS
+        ## project is located in the Grass.path directory and that its name
+        ## starts with 'GRASS' ...)
         l_dir = os.listdir(Grass.path)
         r = re.compile("GRASS.*")
         grass_project = list(filter(r.match, l_dir))[0]
@@ -40,11 +45,14 @@ def initialize():
 @app.route('/home')
 def index():
 
+    ## Query all scenes in the database
     all_scenes = Scene.query.all()
 
+    ## Get first and last date
     date_min = all_scenes[0].date
     date_max = all_scenes[len(all_scenes) - 1].date
 
+    ## Reformat dates from datetime to strings
     date_min = date_min.strftime("%Y-%m-%d")
     date_max = date_max.strftime("%Y-%m-%d")
 
@@ -66,14 +74,14 @@ def meta(scene_id):
 
     ## Get scene by id
     s = Scene.query.filter_by(id=scene_id).\
-        first_or_404("A scene with this ID is currently "
+        first_or_404(f"A scene with the ID '{scene_id}' is currently "
                      "not stored in the database.")
 
     ## Create table (html)
     table = create_meta_table(s)
 
     ## Dynamic title for the html page
-    title = "Metadata for scene #" + scene_id
+    title = f"Metadata for scene #{scene_id}"
 
     ## Get filepath to render raster on map
     filepath = s.filepath
@@ -103,6 +111,7 @@ def serve_file(filepath):
 @app.route('/plot/<string:lat>/<string:lng>/<string:proj>')
 def plot(lat, lng, proj):
 
+    ## Create plot from passed latitude, longitude and projection
     html_plot = create_plot(latitude=lat, longitude=lng, projection=proj)
 
     return html_plot

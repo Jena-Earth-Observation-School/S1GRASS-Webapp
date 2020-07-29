@@ -7,10 +7,10 @@ import grass.script.setup as gsetup
 from progress.bar import Bar
 import os
 import sys
+import re
 import numpy as np
 from pathlib import Path
-from osgeo import ogr
-from osgeo import osr
+from osgeo import ogr, osr
 from bokeh.plotting import figure
 from bokeh.resources import CDN
 from bokeh.embed import file_html
@@ -20,20 +20,22 @@ def grass_main(scenes, epsg):
     """This workflow will be triggered every time new scenes are added to the
     database. If it's triggered for the first time, a GRASS project will be
     set up first using the most common CRS / EPSG code of the dataset in a
-    subdirectory of the provided data directory. Then a GRASS session is
-    started and each scene in the list provided by the parameter 'scenes' will
-    be imported and an average raster will be calculated and exported to
-    display in the main map of the webapp.
+    subdirectory of the provided data directory.
+    A GRASS session is then started and each scene imported to the GRASS
+    project.
+    At the end an average raster will be calculated of all scenes currently
+    imported in the GRASS project and exported for visualization in the webapp.
 
     :param scenes: List of scenes that was created while running db_main().
-    Each scene is listed as the full path.
+        Each scene is listed as the full path.
     :param epsg: Most common CRS in the dataset. Also created while running
-    db_main().
+        db_main().
     """
-    ## Setup GRASS if it hasn't been done already
+
+    ## Setup GRASS project if it hasn't been done already
     location_orig = os.path.join(Grass.path, f'Grass_db_{epsg}')
     if not os.path.isdir(location_orig):
-        print(f"~~ Setting up 'Grass_db_{epsg}'...")
+        print(f"~~ Setting up GRASS project 'Grass_db_{epsg}'...")
         setup_grass(crs=epsg)
 
     ## Start GRASS session and import scenes
@@ -44,121 +46,90 @@ def grass_main(scenes, epsg):
     create_avg_raster()
 
 
-def setup_grass(version=None, path=None, crs=None, name=None):
-    """Sets up a GRASS project.
+def setup_grass(crs):
+    """Sets up a GRASS project with the name 'GRASS_db_{crs}' in the
+    subdirectory '/grass' of the data directory.
 
-    :param version: GRASS version (e.g. 'grass78') [str]
-    :param path: Path where Grass should be set up. Default is a
-    subdirectory of the provided data directory. [str]
     :param crs: EPSG code (e.g. '32629') to set the projection. The main
-    workflow (see grass_main()) uses the most common CRS of all files in a
-    dataset. [str]
-    :param name: Name of the GRASS project. Default is 'GRASS_db_{crs}'. [str]
+        workflow (see grass_main()) uses the most common CRS of all files in a
+        dataset. [str]
 
     :returns: New GRASS project that can be started using
-    start_grass_session().
+        start_grass_session(crs).
     """
-    if crs is None:
-        raise ValueError("Please provide a valid EPSG code.")
 
-    ## Set parameter defaults
-    if version is None:
-        version = 'grass78'
-    if path is None:
-        path = Grass.path
-    if name is None:
-        name = f'GRASS_db_{crs}'
+    path = Grass.path
+    name = f'GRASS_db_{crs}'
 
-    ## General GRASS setup
-    os.environ['GRASSBIN'] = version
-    gisbase = get_grass_gisbase()
-    os.environ['GISBASE'] = gisbase
+    ## General GRASS setup 
+    ## (GRASSBIN is defined in config.py!)
+    os.environ['GISBASE'] = get_grass_gisbase()
     sys.path.append(os.path.join(os.environ['GISBASE'], 'bin'))
     sys.path.append(os.path.join(os.environ['GISBASE'], 'lib'))
     sys.path.append(os.path.join(os.environ['GISBASE'], 'scripts'))
     sys.path.append(os.path.join(os.environ['GISBASE'], 'etc', 'python'))
     os.environ['PROJ_LIB'] = os.path.join(os.environ['GISBASE'], 'share\\proj')
 
-    ## User-defined settings
-    gisdb = path
-
     ## Open a GRASS session and create mapset if it doesn't exist already
-    with Session(gisdb=gisdb,
+    with Session(gisdb=path,
                  location=name,
-                 create_opts='EPSG:' + crs) as session:
+                 create_opts=f"EPSG:{crs}") as session:
         pass
 
-    return print(f"~~ The GRASS project '{name}' was successfully created.")
+    return print(f"GRASS project '{name}' was successfully created.")
 
 
-def start_grass_session(crs=None, name=None, quiet=False):
+def start_grass_session(crs=None):
     """Starts a GRASS session, provided it has been setup before (see
     setup_grass()). This will only search for GRASS projects located in
     Grass.path, which by default is a subdirectory of the provided data
     directory!
 
     :param crs: EPSG code the GRASS project was set up in (e.g.
-    '32629'). This parameter is used to identify automatically generated
-    GRASS projects that contain the EPSG code in their name. For other
-    projects, the parameter 'name' can be used instead. [str]
-    :param name: If the GRASS project cannot be identified with the EPSG
-    code it was set up in, then the name of the project can be passed with
-    this parameter instead (e.g. 'my-awesome-grass-project') [str]
-    :param quiet:
+        '32629'). This parameter is used to identify automatically generated
+        GRASS projects that contain the EPSG code in their name. [str]
 
     :returns: GRASS session
     """
-    ## (There's probably a better way to do the following if-statements,
-    ## but I guess it works...)
-    if crs is None and name is None:
-        raise ValueError("Please provide either a valid EPSG code using the "
-                         "parameter 'crs' or the name of a GRASS project by "
-                         "using the parameter 'name'.")
+    ## If no crs is provided, look for a GRASS project starting with
+    ## 'GRASS_db_' in the GRASS location (Grass.path). By design there
+    ## should be only one project.
+    if crs is None:
+        res = [x for x in os.listdir(Grass.path) if re.search('GRASS_db_', x)]
+        project_name = res[0]
 
-    if crs is not None and name is None:
+    else:
         location = os.path.join(Grass.path, f'GRASS_db_{crs}')
         if not os.path.isdir(location):
-            raise ValueError(
+            raise ImportError(
                 f"A GRASS Location with the name 'GRASS_db_{crs}' has not "
                 f"been set up yet.")
-        project_name = f'GRASS_db_{crs}'
-
-    elif name is not None and crs is None:
-        location = os.path.join(Grass.path, name)
-        if not os.path.isdir(location):
-            raise ValueError(
-                f"A GRASS Location with name the '{name}' has not been set "
-                f"up yet.")
-        project_name = name
-    else:
-        raise ValueError("The parameters 'crs' and 'name' cannot be passed "
-                         "at the same time.")
+        else:
+            project_name = f'GRASS_db_{crs}'
 
     gisbase = get_grass_gisbase()
     gisdb = Grass.path
-    project_name = project_name
     mapset = 'PERMANENT'
 
     gsetup.init(gisbase, gisdb, project_name, mapset)
-    if not quiet:
-        print(f"~~ Current GRASS GIS environment: \n {gscript.gisenv()}")
+
+    print(f"~~ Current GRASS GIS environment: \n {gscript.gisenv()}")
 
 
 def import_to_grass(scenes):
     """Import of multiple scenes into the currently active GRASS session.
 
     :param scenes: List of scenes that should be imported. Each entry in
-    the list is a full path (e.g.
-    'D:\\GEO450_data\\S1A__IW___A_20150320T182611_147_VV_grd_mli_norm_geo_db
-    .tif')
+        the list is a full path (e.g.
+        'D:\\GEO450_data\\S1A__IW___A_20150320T182611_147_VV_grd_mli_norm_geo_db
+        .tif')
 
     :returns: Newly imported scenes in the GRASS session.
     """
 
-    if len(scenes) > 30:
-        print(f"~~ {len(scenes)} scenes will be imported to the current "
-              f"GRASS project. Grab a coffee, this might take a few minutes..."
-              )
+    print(f"~~ {len(scenes)} scenes will be imported to the current "
+          f"GRASS project. Depending on the size of each file, this might "
+          f"take a few minutes...")
 
     bar = Bar('Importing', max=len(scenes))
     for scene in scenes:
@@ -167,6 +138,8 @@ def import_to_grass(scenes):
         scene_name = base[:-len(Path(base).suffix)]
 
         ## Run GRASS Import module
+        ## (Flag 'e': Extend region extents based on new dataset. Also updates
+        ## the default region if in the PERMANENT mapset)
         gscript.run_command("r.in.gdal", input=scene, output=scene_name,
                             flags="e", quiet=True)
         bar.next()
@@ -179,9 +152,8 @@ def create_avg_raster():
     of the webapp. This file will be updated if new scenes have been added
     to the database.
 
-    :returns: 'avg_raster.tif' as a Cloud-Optimized-Geotiff
+    :returns: 'avg_raster.tif' as a cloud optimized GeoTIFF
     """
-    print("~~ Creating average raster:")
 
     ## Define filename and path of the output
     filename = 'avg_raster'
@@ -189,6 +161,8 @@ def create_avg_raster():
 
     ## Get all scenes currently stored in the database
     all_scenes = Scene.query.all()
+
+    print(f"~~ Creating average raster from {len(all_scenes)} scenes:")
 
     ## List basename of all scenes
     scenes = []
@@ -210,6 +184,7 @@ def create_avg_raster():
                         to='1,255', overwrite=True)
 
     ## Modify color table
+    ## (Flag 'e': Histogram equalization)
     gscript.run_command('r.colors', map=f'{filename}_255',
                         color='viridis', flags='e')
 
@@ -221,11 +196,11 @@ def create_avg_raster():
 
 
 def export_cog(scene):
-    """Export a scene as a Cloud Optimized GeoTiff.
+    """Export a scene as a cloud optimized GeoTIFF.
 
     :param scene: full path e.g.
-    'D:\\GEO450_data\\S1A__IW___A_20150320T182611_
-    147_VV_grd_mli_norm_geo_db.tif' [str]
+        'D:\\GEO450_data\\S1A__IW___A_20150320T182611_
+        147_VV_grd_mli_norm_geo_db.tif' [str]
 
     :return out_path: Path to the exported file. [str]
     """
@@ -243,6 +218,8 @@ def export_cog(scene):
     nodata_val = float(meta[0].nodata)
 
     ## Run GRASS output module
+    ## (Flag 'm': Do not write non-standard metadata Enhances compatibility
+    ## with other GIS software)
     gscript.run_command("r.out.gdal", input=scene_name,
                         output=out_path, format='GTiff',
                         createopt="TILED=YES,COMPRESS=DEFLATE",
@@ -290,7 +267,8 @@ def get_timeseries(coordinate):
     given coordinate.
 
     :param coordinate: Output of transform_coord(). Location to generate
-    timeseries for. Must be in the same projection as the GRASS project. [str]
+        timeseries for. Must be in the same projection as the GRASS project.
+        [str]
 
     :return values_list: List of extracted values.
     :return dates_list: List of dates associated with values_list.
@@ -335,8 +313,8 @@ def create_plot(latitude, longitude, projection):
 
     :param latitude: Latitude coordinate. [str or float]
     :param longitude: Longitude coordinate. [str or float]
-    :param projection: Projection / EPSG code of the GRASS project. [str or
-    int]
+    :param projection: Projection / EPSG code of the GRASS project.
+        [str or int]
 
     :returns: Plot in html format.
     """
@@ -358,10 +336,10 @@ def create_plot(latitude, longitude, projection):
                x_axis_type='datetime',
                y_range=(y_min, y_max),
                title=f"Location: "
-                       f"{round(float(latitude), 2)}, "
-                       f"{round(float(longitude), 2)}    -    "
-                       f"Scenes: {sum(abs(i) > 0 for i in y_values)}/"
-                       f"{len(y_values)}")
+                     f"{round(float(latitude), 2)}, "
+                     f"{round(float(longitude), 2)}    -    "
+                     f"Scenes: {sum(abs(i) > 0 for i in y_values)}/"
+                     f"{len(y_values)}")
 
     p.line(x_dates, y_values, line_width=2)
     p.dot(x_dates, y_values, size=15, color='darkblue')

@@ -14,10 +14,10 @@ gdal.UseExceptions()
 def db_main():
     """This workflow first uses flask-migrate to initialize the SQLite database
     scheme and sets up the database. It will then search the provided data
-    directory for Sentinel-1 GeoTiffs. Information will be extracted from all
-    scenes that haven't been imported to the database yet and added to the
-    database. The most common CRS in the dataset will also be determined,
-    which is used to set up GRASS in grass_main() (see grass_fun.py).
+    directory for files in GeoTIFF format. Information will be extracted
+    from all scenes that haven't been imported to the database yet and added to
+    the database. The most common CRS in the dataset will also be determined,
+    which is used in grass_main() (see grass_fun.py).
     """
 
     ## Initialize database if it hasn't been done already.
@@ -29,70 +29,76 @@ def db_main():
     if not os.path.isfile(file):
         os.system('flask db migrate')
         os.system('flask db upgrade')
+        print("~~~~")
 
     ## Create a list of files that haven't been stored in the database yet.
     ## Either this will just list all files because nothing has been
     ## added to the db yet or it will update the db with new files.
     scenes_list = create_filename_list()
 
-    ## Create dictionary with all necessary information.
-    data_dict, epsg_list = create_data_dict(scenes=scenes_list)
-
-    ## Create new list of scenes in case any were rejected while running
-    ## create_data_dict()
-    scene_list_new = list(data_dict.keys())
-
-    if len(scene_list_new) == 0:
+    if len(scenes_list) == 0:
         print(f"~~ The database is up-to-date. No new files were found in "
               f"{Data.path}")
         epsg = None
 
+        return scenes_list, epsg
+
     else:
-        print(
-            f"~~ {len(scene_list_new)} new files will be added to the "
-            f"database.")
+        ## Create dictionary with all necessary information.
+        data_dict, common_epsg = create_data_dict(scenes=scenes_list)
+
+        ## Create new list of scenes in case any were rejected while running
+        ## create_data_dict()
+        scenes_list_new = list(data_dict.keys())
 
         ## Add extracted information to database.
         add_data_to_db(data_dict)
 
-        ## Get most common epsg from epsg_list
-        epsg = max(set(epsg_list), key=epsg_list.count)
+        print(
+            f"~~ {len(scenes_list_new)} new files have been added to the "
+            f"SQLite database and will now be imported to GRASS.")
 
-    return scene_list_new, epsg
+        epsg = common_epsg
+
+        return scenes_list_new, epsg
 
 
 def create_filename_list(path=None):
     """Creates a list of files that haven't been stored in the database yet.
     The list will be used in 'create_data_dict()' to extract all necessary
     information from those files.
+
     :param path: Full path of a raster file
-    (e.g. "D:\\data_dir\\filename.tif").
-    :return: Scenes that haven't been stored in the database yet. [List]
+        (e.g. "D:\\data_dir\\filename.tif").
+
+    :return: Scenes that haven't been stored in the database yet. [list]
     """
 
     ## Define path to data directory
     if path is None:
         path = Data.path
 
-    ## Search for Sentinel-1 scenes using regular expression
-    scenes = [path + "\\" + f for f in os.listdir(path) if
-              re.search(r'^S1[AB].*\.tif', f)]
+    ## Search for GeoTIFF files using regular expression
+    scenes = [f"{path}\\{f}" for f in os.listdir(path) if
+              re.search(r'.*\.tif', f)]
 
     if len(scenes) == 0:
-        raise ImportError("No Sentinel-1 GeoTiffs were found in the "
+        raise ImportError("No files in GeoTIFF format were found in the "
                           "directory: ", path)
 
     ## Scenes already in database
     db_scenes = Scene.query.all()
 
     ## Only return scenes that are not in the database yet!
+    ## If no scenes in database, then all found scenes can be returned.
+    ## Else scenes that are already in the database need to be sorted out
+    ## first.
     if len(db_scenes) == 0:
         return scenes
-
     else:
         scenes_new = []
         for scene in scenes:
-            if any(scene in db.filepath for db in db_scenes):
+            if any(scene in db_scene.filepath for db_scene in db_scenes):
                 continue
             else:
                 scenes_new.append(scene)
@@ -101,15 +107,20 @@ def create_filename_list(path=None):
 
 
 def create_data_dict(scenes=None):
-    """Creates a dictionary with information about each valid Sentinel-1
-    .tif (!) file in the data directory. The extracted information is then
-    used to fill the SQLite database.
+    """Creates a dictionary with information about each valid file in the
+    data directory. The extracted information is then used to fill the
+    SQLite database.
+
     :param scenes: List of scenes created with get_filename_list().
+
     :return data_dict: Extracted information [dict]
+    :return common_epsg: Most common EPSG code for the dataset [int]
     """
 
     ## Loop over each scene, extract information and store in dict. Also
-    # store EPSG code of each scene in a list.
+    ## store EPSG code of each scene in a separate list.
+    any_reject = False  # will be set to True if any scenes are rejected
+    num_reject = 0  # will be counted up, if any scenes are rejected
     data_dict = {}
     epsg_list = []
     for scene in scenes:
@@ -147,33 +158,40 @@ def create_data_dict(scenes=None):
                                 "band_max": band_max}
 
         except RuntimeError:
-            print(os.path.basename(scene))
-            print("No valid pixels were found in sampling. File will be "
-                  "moved to subdirectory 'reject'.")
-
             ## File was opened in GDAL. Overwrite with 'None' to close.
             data = None
 
-            ## Create subdirectory for rejected files that for some reason
-            ## are faulty and can't be used
-            reject_dir = os.path.join(Data.path, "reject")
+            ## Create subdirectory for rejected files
+            reject_dir = os.path.join(Data.path, 'reject')
             if not os.path.exists(reject_dir):
                 os.makedirs(reject_dir)
+
             olddir = scene
             newdir = os.path.join(reject_dir, os.path.basename(scene))
-
             shutil.move(olddir, newdir)
+
+            num_reject += 1
+            any_reject = True
 
             continue
 
-    return data_dict, epsg_list
+    ## Get most common epsg from epsg_list
+    common_epsg = max(set(epsg_list), key=epsg_list.count)
+
+    ## Print number of scenes that were rejected (if any were rejected)
+    if any_reject:
+        print(f"~~ Could not extract necessary data from {num_reject} "
+              f"scenes with GDAL. These scenes were moved to the "
+              f"subdirectory '/reject'.")
+
+    return data_dict, common_epsg
 
 
 def add_data_to_db(info_dict):
     """Adds information that was extracted using 'create_data_dict()' to the
     database.
-    :param info_dict: Dictionary that contains information to be added to
-    the database.
+
+    :param info_dict: Information to be added to the database. [dict]
     """
     info = info_dict
 
@@ -207,36 +225,41 @@ def add_data_to_db(info_dict):
 def _get_filename_info(path):
     """Gets information about a raster file based on pyroSAR's file naming
     scheme: https://pyrosar.readthedocs.io/en/latest/general/filenaming.html
+
     :param path: Full path of a raster file
-    (e.g. "D:\\data_dir\\filename.tif").
-    :return: Extracted information. [List]
+        (e.g. "D:\\data_dir\\filename.tif")
+
+    :return: Extracted information. [list]
     """
     filename = os.path.basename(path)
 
     sensor = filename[0:4].replace("_", "")
     acq_mode = filename[5:9].replace("_", "")
-    orb = filename[10:11].replace("_", "")
+    orb = filename[10:11]
+
     if orb == "A":
         orbit = "ascending"
     elif orb == "D":
         orbit = "descending"
     else:
-        raise ValueError("filename[10:11] should contain "
-                         "information about the orbit (ascending or "
-                         "descending). \n Please check if your files are "
-                         "named according to the naming scheme of PyroSAR: \n"
-                         "https://pyrosar.readthedocs.io/en/latest/general/"
+        raise ValueError("Information about the orbit (ascending or "
+                         "descending) was expected at index [10:11] of the "
+                         "filename. "
+                         "\n Please check if your files are "
+                         "named according to the naming scheme of pyroSAR: "
+                         "\n https://pyrosar.readthedocs.io/en/latest/general/"
                          "filenaming.html")
+
+    d = filename[12:27].replace("_", "")
+    date = dateutil.parser.parse(d)
+
     if "_VV_" in filename:
         pol = "VV"
     elif "_VH_" in filename:
         pol = "VH"
     else:
         pol = None
-        print("Could not find polarisation type for: ", filename)
-
-    d = filename[12:27].replace("_", "")
-    date = dateutil.parser.parse(d)
+        print(f"Could not find polarisation in filename: {filename}")
 
     return [sensor, acq_mode, orbit, pol, date]
 
@@ -244,8 +267,10 @@ def _get_filename_info(path):
 def _get_extent_resolution(dataset):
     """Gets information about extent as well as x- and y-resolution of a loaded
     raster file.
+
     :param dataset: osgeo.gdal.Dataset
-    :return: Extracted information. [List]
+
+    :return: Extracted information. [list]
     """
     ulx, xres, xskew, uly, yskew, yres = dataset.GetGeoTransform()
     lrx = ulx + (dataset.RasterXSize * xres)
@@ -255,10 +280,12 @@ def _get_extent_resolution(dataset):
 
 
 def _get_epsg(path):
-    """ Gets EPSG code from a raster file using GDAL.
+    """Gets EPSG code from a raster file using GDAL.
+
     :param path: Full path of a raster file
-    (e.g. "D:\\data_dir\\filename.tif").
-    :return: EPSG code. [Str]
+        (e.g. "D:\\data_dir\\filename.tif").
+
+    :return: EPSG code. [str]
     """
 
     data = gdal.Open(path, GA_ReadOnly)

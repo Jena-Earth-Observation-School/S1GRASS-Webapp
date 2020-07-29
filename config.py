@@ -11,10 +11,10 @@ data_dir = "D:/GEO450_data"
 data_dir = os.path.abspath(data_dir)
 
 if not os.path.exists(data_dir):
-    raise ImportError(data_dir, " does not exist. Please change the "
-                                "variable 'data_dir' in 'config.py' to a"
-                                "path containing the datasets you want to "
-                                "work with.")
+    raise ImportError(f"{data_dir} does not exist. Please change the "
+                      "variable 'data_dir' in 'config.py' to a"
+                      "path containing the datasets you want to "
+                      "work with.")
 
 ## Save sqlite and grass stuff in subdirectories of the data directory,
 ## so the user can also access and work with both outside of this webapp.
@@ -29,11 +29,15 @@ if not os.path.exists(grass_dir):
 if not os.path.exists(grass_dir_out):
     os.makedirs(grass_dir_out)
 
-## SQLite configurations that are also imported in __init__.py
+
+## Configurations that are imported in __init__.py
 class Config(object):
     SQLALCHEMY_DATABASE_URI = 'sqlite:///' \
                               + os.path.join(sqlite_dir, 's1_webapp.db')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
+
+    os.environ['GRASSBIN'] = 'grass78'
+
 
 ## Save paths as classes so they can easily imported elsewhere (e.g. as
 ## 'Data.path' or 'Grass.path')

@@ -1,7 +1,7 @@
 from flask_table import Table, Col, LinkCol
-import os
-
 from flask_app.models import Scene
+
+import os
 
 
 class OverviewTable(Table):
@@ -64,5 +64,5 @@ def create_meta_table(scene):
     ## Populate the table
     table = MetaTable(items)
 
-    ##  Return table as html
+    ## Return table as html
     return table.__html__()

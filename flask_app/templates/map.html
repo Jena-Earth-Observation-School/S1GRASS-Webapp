@@ -74,8 +74,6 @@ fetch(file)
         // Get georaster projection and store in global variable
         ras_proj = georaster.projection;
 
-        console.log("proj:", ras_proj);
-
         // Add layer and fit to layer extent
         layer.addTo(map);
         map.fitBounds(layer.getBounds());

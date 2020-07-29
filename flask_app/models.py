@@ -1,5 +1,7 @@
-from datetime import datetime
 from flask_app import db
+
+from datetime import datetime
+
 
 class Scene(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -45,6 +47,7 @@ class Geometry(db.Model):
 
     def __repr__(self):
         return '<Geometry of scene {}>'.format(self.scene_id)
+
 
 """
 class GrassOutput(db.Model):

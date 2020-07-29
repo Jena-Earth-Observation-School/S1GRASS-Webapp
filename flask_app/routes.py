@@ -6,7 +6,6 @@ from flask_app.tables import create_overview_table, create_meta_table
 from flask_app.models import Scene
 
 from flask import render_template, send_from_directory
-import re
 import os
 
 
@@ -15,30 +14,25 @@ def initialize():
     """This will trigger db_main() and grass_main() (for more details see
     function descriptions in sqlite_fun.py and grass_fun.py) when the
     webapp is opened to either:
-    - create the SQLite database and setup GRASS for the first time,
-    which might take a few minutes (depending on number and size of valid
-    scenes)
-    - OR update both with new scenes
-    - OR do nothing, because setup has already been done and there are no new
-    scenes in the directory.
+
+    - create the SQLite database and setup a GRASS project
+    - OR update both with new scenes if they already exist
+    - OR do nothing and start the web app, because has already been set up and
+    there are no new scenes in the directory.
     """
 
     ## Create (or update) SQLite database
     scenes, epsg = db_main()
 
-    ## Only execute grass_main() if new scenes were found. Scenes will be
+    ## Only execute grass_main() if (new) scenes were found. Scenes will be
     ## imported to the GRASS database and avg_raster.tif will be recalculated.
+    ## grass_main() will also set up a GRASS project if none exist already.
+    ## Else, it is assumed a GRASS project already exists and a session is
+    ## started.
     if len(scenes) > 0:
         grass_main(scenes, epsg)
     else:
-        ## Search for already existing GRASS project and start session
-        ## (Probably best to change this? This assumes that only one GRASS
-        ## project is located in the Grass.path directory and that its name
-        ## starts with 'GRASS' ...)
-        l_dir = os.listdir(Grass.path)
-        r = re.compile("GRASS.*")
-        grass_project = list(filter(r.match, l_dir))[0]
-        start_grass_session(name=grass_project)
+        start_grass_session(crs=epsg)
 
 
 @app.route('/')
@@ -72,7 +66,7 @@ def overview():
 @app.route('/meta/<scene_id>')
 def meta(scene_id):
 
-    ## Get scene by id
+    ## Get scene by ID
     s = Scene.query.filter_by(id=scene_id).\
         first_or_404(f"A scene with the ID '{scene_id}' is currently "
                      "not stored in the database.")

@@ -79,7 +79,7 @@ def create_filename_list(path=None):
         path = Data.path
 
     ## Search for GeoTIFF files using regular expression
-    scenes = [f"{path}\\{f}" for f in os.listdir(path) if
+    scenes = [os.path.join(path, f) for f in os.listdir(path) if
               re.search(r'.*\.tif', f)]
 
     if len(scenes) == 0:

@@ -12,7 +12,8 @@ be deployed locally (in the web browser). This application can then be used to:
 
 ### Setup / Requirements
 
-- Install a stable version of [GRASS GIS (7.8.*)](https://grass.osgeo.org/download/)
+- Install a stable version of [GRASS GIS (7.8.*)](https://grass.osgeo.org/download/) and add the installation location 
+to the PATH environment variable 
 - Download / Clone this repository
 - Open `config.py` and update the variable `data_dir` with the location of locally stored Radar imagery in GeoTIFF format       
     - The filenaming scheme used by [pyroSAR](https://github.com/johntruckenbrodt/pyroSAR) is expected. A different naming 

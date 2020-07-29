@@ -19,8 +19,8 @@ be deployed locally (in the web browser). This application can then be used to:
     scheme will lead to some of the extracted metadata to not make sense or it will lead to an error during initialization 
     of the application. (For more information about pyroSAR's naming scheme see [here](https://pyrosar.readthedocs.io/en/latest/general/filenaming.html) or [here](https://www.researchgate.net/profile/John_Truckenbrodt/publication/334258406_PYROSAR_A_FRAMEWORK_FOR_LARGE-SCALE_SAR_SATELLITE_DATA_PROCESSING/links/5d1f4071a6fdcc2462c1ff1b/PYROSAR-A-FRAMEWORK-FOR-LARGE-SCALE-SAR-SATELLITE-DATA-PROCESSING.pdf))
     - The name of this project is a bit misleading... Radar sensors other than Sentinel-1 should work as well :)
-- Open terminal and navigate to the repository ('Anaconda Prompt' is recommended on Windows to use Conda)
-- Set up and activate a Conda environment:
+- Open terminal and navigate to the repository
+- Set up and activate a Conda environment (Anaconda/Miniconda required):
     - `conda env create -f environment.yml`
     - `conda activate S1GRASS_env`
 - Use `flask run` to start the local deployment
